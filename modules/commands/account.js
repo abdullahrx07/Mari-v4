@@ -54,11 +54,10 @@ function getAccounts() {
     return data;
 }
 
-function mask(str) {
+function mask(str, hideCount = 6) {
     if (!str) return "❌ not set";
-    if (str.length <= 4) return "★".repeat(str.length);
-    const show = Math.ceil(str.length / 4);
-    return str.slice(0, show) + "★".repeat(str.length - show);
+    const show = Math.ceil(str.length / 4) || str.length;
+    return str.slice(0, show) + "*".repeat(hideCount);
 }
 
 function getUIDFromAppstate(file) {
@@ -71,11 +70,21 @@ function getUIDFromAppstate(file) {
     } catch { return "❌ file missing"; }
 }
 
+// ─── frame helper ───────────────────────────────────────────────────────────
+
+function frame(title, bodyLines, footerLines = []) {
+    const lines = [title, ...bodyLines];
+    if (footerLines.length) {
+        lines.push("", ...footerLines);
+    }
+    return lines.join("\n");
+}
+
 // ─── command ──────────────────────────────────────────────────────────────────
 
 module.exports.config = {
     name: "account",
-    version: "2.0.0",
+    version: "2.1.0",
     hasPermssion: 2,
     credits: "rX",
     description: "Multi-account manager — info, switch, refresh",
@@ -91,39 +100,33 @@ module.exports.run = async function ({ api, event, args }) {
     if (!sub) {
         const accounts = getAccounts();
         const active   = getActiveSlot();
-        const lines    = [
-            "╔════════════════════════════╗",
-            "       📋  Account Info",
-            "╚════════════════════════════╝"
-        ];
+        const body     = [];
+        const numEmoji = { "1": "1️⃣", "2": "2️⃣", "3": "3️⃣", "4": "4️⃣", "5": "5️⃣" };
 
-        // Show slots 1 & 2 (and any others that exist)
         const slots = ["1", "2"];
-        for (const num of slots) {
+        slots.forEach((num, i) => {
             const file  = slotFile(num);
             const uid   = getUIDFromAppstate(file);
             const creds = accounts[num] || {};
-            const email = mask(creds.email || "");
-            const pass  = mask(creds.password || "");
-            const tag   = active === num ? " ◀ active" : "";
+            const email = mask(creds.email || "", 6);
+            const pass  = mask(creds.password || "", 4);
+            const status = active === num ? "ACTIVE" : "inactive";
 
-            lines.push(
-                `\n🔷 Account ${num}${tag}`,
-                `   🆔 UID      : ${uid}`,
-                `   📧 Email    : ${email}`,
-                `   🔑 Password : ${pass}`
+            body.push(
+                `${numEmoji[num] || num} Acc ${num} (${status})`,
+                `UID: ${uid}`,
+                `Email: ${email}`,
+                `Pass: ${pass}`
             );
-        }
+            if (i < slots.length - 1) body.push("");
+        });
 
-        lines.push(
-            "\n──────────────────────────────",
-            "💡 Commands:",
-            "  !account switch 2  → switch to acc 2",
-            "  !account switch 1  → switch back to acc 1",
-            "  !account refresh   → update cookies"
-        );
+        const msg = frame("Account Info", body, [
+            "Commands",
+            "switch 2 / switch 1 / refresh"
+        ]);
 
-        return api.sendMessage(lines.join("\n"), event.threadID, event.messageID);
+        return api.sendMessage(msg, event.threadID, event.messageID);
     }
 
     // ── !account switch <N> ───────────────────────────────────────────────────
@@ -131,7 +134,10 @@ module.exports.run = async function ({ api, event, args }) {
         const num = String(args[1] || "").trim();
         if (!num || isNaN(num)) {
             return api.sendMessage(
-                "⚠️ Account number dao:\n  !account switch 2",
+                frame("⚠️ Missing Number", [
+                    "Account number দাও:",
+                    "→ !account switch 2"
+                ]),
                 event.threadID, event.messageID
             );
         }
@@ -141,8 +147,12 @@ module.exports.run = async function ({ api, event, args }) {
 
         if (!fs.existsSync(filePath)) {
             return api.sendMessage(
-                `❌ Account ${num} এর appstate (${file}) নেই!\n` +
-                `আগে ওই account এর appstate${num}.json রুট folder এ রাখো।`,
+                frame("❌ Appstate Not Found", [
+                    `Account ${num} এর appstate (${file}) নেই!`,
+                    "",
+                    `আগে ওই account এর ${file} রুট`,
+                    "folder এ রাখো।"
+                ]),
                 event.threadID, event.messageID
             );
         }
@@ -155,10 +165,13 @@ module.exports.run = async function ({ api, event, args }) {
         const uid = getUIDFromAppstate(file);
 
         await api.sendMessage(
-            `✅ Account ${num} select করা হয়েছে!\n` +
-            `🆔 UID: ${uid}\n` +
-            `📁 File: ${file}\n\n` +
-            `♻️ Bot restart হচ্ছে...`,
+            frame("✅ Account Switched", [
+                `🆔 UID     : ${uid}`,
+                `📁 File    : ${file}`,
+                `🔢 Account : ${num}`
+            ], [
+                "♻️ Bot restart হচ্ছে..."
+            ]),
             event.threadID,
             event.messageID
         );
@@ -197,55 +210,60 @@ module.exports.run = async function ({ api, event, args }) {
             const changed  = [...newKeys].filter(k => oldKeys.has(k) && oldMap[k] !== newMap[k]);
 
             // Separate extension keys from others
-            const extChanged = changed.filter(k => EXT_KEYS.includes(k));
-            const extAdded   = added.filter(k => EXT_KEYS.includes(k));
+            const extChanged   = changed.filter(k => EXT_KEYS.includes(k));
+            const extAdded     = added.filter(k => EXT_KEYS.includes(k));
             const otherChanged = changed.filter(k => !EXT_KEYS.includes(k));
+            const otherAdded   = added.filter(k => !EXT_KEYS.includes(k));
 
             const fmt = arr => arr.length ? arr.join(", ") : "—";
 
-            const lines = [
-                `✅ Cookie refresh সম্পন্ন!`,
-                `📁 Account ${activeSlot} → ${file}`,
-                `📦 Total cookies: ${freshArr.length}`,
-                `──────────────────────────`,
+            const body = [
+                `📁 Account : ${activeSlot} → ${file}`,
+                `📦 Total   : ${freshArr.length} cookies`
             ];
 
             if (extChanged.length || extAdded.length) {
-                lines.push(`🔄 Extension/Session keys updated:`);
-                if (extChanged.length) lines.push(`   changed : ${fmt(extChanged)}`);
-                if (extAdded.length)   lines.push(`   added   : ${fmt(extAdded)}`);
+                body.push("", "🔄 Session keys");
+                if (extChanged.length) body.push(`  changed : ${fmt(extChanged)}`);
+                if (extAdded.length)   body.push(`  added   : ${fmt(extAdded)}`);
             }
 
             if (otherChanged.length) {
-                lines.push(`🔑 Other keys changed (${otherChanged.length}):`);
-                lines.push(`   ${fmt(otherChanged)}`);
+                body.push("", `🔑 Changed (${otherChanged.length})`, `  ${fmt(otherChanged)}`);
             }
 
-            if (added.filter(k => !EXT_KEYS.includes(k)).length) {
-                lines.push(`➕ New keys: ${fmt(added.filter(k => !EXT_KEYS.includes(k)))}`);
+            if (otherAdded.length) {
+                body.push("", "➕ New keys", `  ${fmt(otherAdded)}`);
             }
 
             if (removed.length) {
-                lines.push(`➖ Removed: ${fmt(removed)}`);
+                body.push("", "➖ Removed", `  ${fmt(removed)}`);
             }
 
             if (!changed.length && !added.length && !removed.length) {
-                lines.push(`ℹ️ কোনো পরিবর্তন নেই — cookies already fresh.`);
+                body.push("", "ℹ️ কোনো পরিবর্তন নেই — cookies already fresh.");
             }
 
-            return api.sendMessage(lines.join("\n"), event.threadID, event.messageID);
+            return api.sendMessage(
+                frame("✅ Cookie Refreshed", body),
+                event.threadID, event.messageID
+            );
 
         } catch (e) {
-            return api.sendMessage(`❌ Refresh fail: ${e.message}`, event.threadID, event.messageID);
+            return api.sendMessage(
+                frame("❌ Refresh Failed", [`⚠️ ${e.message}`]),
+                event.threadID, event.messageID
+            );
         }
     }
 
     // ── unknown ───────────────────────────────────────────────────────────────
     return api.sendMessage(
-        `❓ Unknown subcommand. Use:\n` +
-        `  !account           → info\n` +
-        `  !account switch 2  → switch account\n` +
-        `  !account refresh   → update cookies`,
+        frame("❓ Unknown Command", [
+            "!account           → info",
+            "!account switch 2  → switch account",
+            "!account refresh   → update cookies"
+        ]),
         event.threadID, event.messageID
     );
 };
