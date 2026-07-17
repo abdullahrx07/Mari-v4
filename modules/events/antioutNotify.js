@@ -1,4 +1,4 @@
-const fs = require("fs-extra");
+/***const fs = require("fs-extra");
 const axios = require("axios");
 const Canvas = require("canvas");
 
@@ -69,4 +69,4 @@ module.exports.run = async ({ event, api }) => {
 		console.error(err);
 		api.sendMessage("❌ Error creating goodbye image.", threadID);
 	}
-};
+};***/
