@@ -495,13 +495,13 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, {
             [] :
             JSON.parse(delta.deltaMessageReply.message.data.prng);
 
-          const m_id = mdata.map((u) => u.i);
-          const m_offset = mdata.map((u) => u.o);
-          const m_length = mdata.map((u) => u.l);
+          const m_id = mdata.map((u) => u.i != null ? u.i : u.uid);
+          const m_offset = mdata.map((u) => u.o != null ? u.o : u.offset);
+          const m_length = mdata.map((u) => u.l != null ? u.l : u.length);
 
           const mentions = {};
           for (let i = 0; i < m_id.length; i++) {
-            mentions[m_id[i]] = (delta.deltaMessageReply.message.body || '').substring(m_offset[i], m_offset[i] + m_length[i]);
+            mentions[String(m_id[i])] = (delta.deltaMessageReply.message.body || '').substring(m_offset[i], m_offset[i] + m_length[i]);
           }
 
           const callbackToReturn = {
@@ -544,13 +544,13 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, {
               [] :
               JSON.parse(delta.deltaMessageReply.repliedToMessage.data.prng);
 
-            const m_id = mdata.map((u) => u.i);
-            const m_offset = mdata.map((u) => u.o);
-            const m_length = mdata.map((u) => u.l);
+            const m_id = mdata.map((u) => u.i != null ? u.i : u.uid);
+            const m_offset = mdata.map((u) => u.o != null ? u.o : u.offset);
+            const m_length = mdata.map((u) => u.l != null ? u.l : u.length);
 
             const rmentions = {};
             for (let i = 0; i < m_id.length; i++) {
-              rmentions[m_id[i]] = (delta.deltaMessageReply.repliedToMessage.body || '').substring(m_offset[i], m_offset[i] + m_length[i]);
+              rmentions[String(m_id[i])] = (delta.deltaMessageReply.repliedToMessage.body || '').substring(m_offset[i], m_offset[i] + m_length[i]);
             }
 
             callbackToReturn.messageReply = {

@@ -724,17 +724,23 @@ function formatAttachment(attachments, attachmentIds, attachmentMap, shareMap) {
 
 function formatDeltaMessage(m) {
     var md = m.messageMetadata;
-    var mdata =
-        m.data === undefined ? [] :
-        m.data.prng === undefined ? [] :
-        JSON.parse(m.data.prng);
-    var m_id = mdata.map((/** @type {{ i: any; }} */u) => u.i);
-    var m_offset = mdata.map((/** @type {{ o: any; }} */u) => u.o);
-    var m_length = mdata.map((/** @type {{ l: any; }} */u) => u.l);
+    var mdata;
+    try {
+        mdata =
+            m.data == null ? [] :
+            m.data.prng == null ? [] :
+            JSON.parse(m.data.prng);
+        if (!Array.isArray(mdata)) mdata = [];
+    } catch (e) {
+        mdata = [];
+    }
+    var m_id = mdata.map((/** @type {{ i: any; uid: any; }} */u) => u.i != null ? u.i : u.uid);
+    var m_offset = mdata.map((/** @type {{ o: any; offset: any; }} */u) => u.o != null ? u.o : u.offset);
+    var m_length = mdata.map((/** @type {{ l: any; length: any; }} */u) => u.l != null ? u.l : u.length);
     var mentions = {};
     var body = m.body || "";
     var args = body == "" ? [] : body.trim().split(/\s+/);
-    for (var i = 0; i < m_id.length; i++) mentions[m_id[i]] = m.body.substring(m_offset[i], m_offset[i] + m_length[i]);
+    for (var i = 0; i < m_id.length; i++) mentions[String(m_id[i])] = body.substring(m_offset[i], m_offset[i] + m_length[i]);
 
     return {
         type: "message",

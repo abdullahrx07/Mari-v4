@@ -352,7 +352,7 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
             if (v.delta.attachments && (i == v.delta.attachments.length) || utils.getType(v.delta.attachments) !== "Array") {
                 var fmtMsg;
                 try {
-                    fmtMsg = utils.formatDeltaMessage(v);
+                    fmtMsg = utils.formatDeltaMessage(v.delta);
                 } catch (err) {
                     return log.error("Lỗi Nhẹ", err);
                 }
@@ -417,13 +417,13 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
                             delta.deltaMessageReply.message.data === undefined ? [] :
                                 delta.deltaMessageReply.message.data.prng === undefined ? [] :
                                     JSON.parse(delta.deltaMessageReply.message.data.prng);
-                    var m_id = mdata.map(u => u.i);
-                    var m_offset = mdata.map(u => u.o);
-                    var m_length = mdata.map(u => u.l);
+                    var m_id = mdata.map(u => u.i != null ? u.i : u.uid);
+                    var m_offset = mdata.map(u => u.o != null ? u.o : u.offset);
+                    var m_length = mdata.map(u => u.l != null ? u.l : u.length);
 
                     var mentions = {};
 
-                    for (var i = 0; i < m_id.length; i++) mentions[m_id[i]] = (delta.deltaMessageReply.message.body || "").substring(m_offset[i], m_offset[i] + m_length[i]);
+                    for (var i = 0; i < m_id.length; i++) mentions[String(m_id[i])] = (delta.deltaMessageReply.message.body || "").substring(m_offset[i], m_offset[i] + m_length[i]);
                     //Mention block - 1#
                     var callbackToReturn = {
                         type: "message_reply",
@@ -460,13 +460,13 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
                                 delta.deltaMessageReply.repliedToMessage.data === undefined ? [] :
                                     delta.deltaMessageReply.repliedToMessage.data.prng === undefined ? [] :
                                         JSON.parse(delta.deltaMessageReply.repliedToMessage.data.prng);
-                        m_id = mdata.map(u => u.i);
-                        m_offset = mdata.map(u => u.o);
-                        m_length = mdata.map(u => u.l);
+                        m_id = mdata.map(u => u.i != null ? u.i : u.uid);
+                        m_offset = mdata.map(u => u.o != null ? u.o : u.offset);
+                        m_length = mdata.map(u => u.l != null ? u.l : u.length);
 
                         var rmentions = {};
 
-                        for (var i = 0; i < m_id.length; i++) rmentions[m_id[i]] = (delta.deltaMessageReply.repliedToMessage.body || "").substring(m_offset[i], m_offset[i] + m_length[i]);
+                        for (var i = 0; i < m_id.length; i++) rmentions[String(m_id[i])] = (delta.deltaMessageReply.repliedToMessage.body || "").substring(m_offset[i], m_offset[i] + m_length[i]);
                         //Mention block - 2#
                         callbackToReturn.messageReply = {
                             threadID: (delta.deltaMessageReply.repliedToMessage.messageMetadata.threadKey.threadFbId ? delta.deltaMessageReply.repliedToMessage.messageMetadata.threadKey.threadFbId : delta.deltaMessageReply.repliedToMessage.messageMetadata.threadKey.otherUserFbId).toString(),

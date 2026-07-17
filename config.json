@@ -29,6 +29,9 @@
     "DATABASE": {
         "sqlite": {
             "storage": "data.sqlite"
+        },
+        "mongodb": {
+            "uri": ""
         }
     },
     "DESIGN": {
@@ -142,5 +145,14 @@
     },
     "money": {
         "cooldownTime": 1800000
+    },
+    "mine": {
+        "APIKEY": ""
+    },
+    "adminUpdate": {
+        "sendNoti": true
+    },
+    "god": {
+        "enable": true
     }
 }

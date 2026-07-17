@@ -10,15 +10,21 @@ const { execSync } = require('child_process');
 const logger = require("./utils/log.js");
 const con = require('./config.json');
 // fca-priyansh was flagged by Replit's package security scanner as
-// credential/session-harvesting malware and has been removed from
-// package.json — do NOT reinstall it. Facebook login is paused until a
-// vetted login library replaces it (see replit.md). The rest of the bot
-// (database, self-update, command loading) still starts up normally.
+// credential/session-harvesting malware and was removed from package.json —
+// do NOT reinstall it.
+//
+// Facebook login now uses the vendored ./includes/Fca library instead. That
+// copy was audited before being wired in here: a file (src/Dev_Horizon_Data.js)
+// that uploaded scraped user/thread data to a hardcoded third-party server
+// was deleted, and a dead code path that could auto-download and run
+// unsigned installers with sudo was removed from includes/Fca/index.js. The
+// library's own loader also already excludes every "Dev_*" file in
+// includes/Fca/src from the live API surface. See replit.md for details.
 let login = null;
 try {
-	login = require('fca-priyansh');
+	login = require('./includes/Fca');
 } catch (e) {
-	logger('fca-priyansh is not installed (it was flagged as credential-stealing malware by the security scanner). Facebook login is disabled until a safe login library is configured.', '[ LOGIN-DISABLED ]');
+	logger('Failed to load ./includes/Fca — Facebook login is disabled: ' + e.message, '[ LOGIN-DISABLED ]');
 }
 const moment = require("moment-timezone");
 const timeStart = Date.now();

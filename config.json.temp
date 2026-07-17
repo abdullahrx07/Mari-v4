@@ -1,0 +1,158 @@
+{
+    "NOTIFICATION": true,
+    "language": "en",
+    "notiGroup": true,
+    "keyActive": "",
+    "DeveloperMode": false,
+    "autoCreateDB": true,
+    "allowInbox": true,
+    "commandDisabled": [
+        "down.js"
+    ],
+    "eventDisabled": [],
+    "autoRestart": 36000000,
+    "UPTIME": 2446107.1632777182,
+    "ACCESSTOKEN": "",
+    "FACEBOOK_ADMIN": "ʀxαвᴅυℓℓαн007",
+    "ZALO_ADMIN": "",
+    "ADMIN_NAME": "rX",
+    "BOTNAME": "Sııƞƞeɽ v3 倫ッ",
+    "PREFIX": "!",
+    "ADMINBOT": [
+        "61572070323866",
+        "61572070323866",
+        "61576647399697"
+    ],
+    "NDH": [
+        "61572070323866"
+    ],
+    "DATABASE": {
+        "sqlite": {
+            "storage": "data.sqlite"
+        },
+        "mongodb": {
+            "uri": ""
+        }
+    },
+    "DESIGN": {
+        "Theme": "blue",
+        "Admin": "Phạm Minh Đồng",
+        "Setup": {
+            "Theme": "Mày có thể dùng các Theme như: Aqua, Fiery, Blue, Pink, Red, Retro, Sunlight, Teen, Summer, Flower, Ghost, and Hacker to enhance your terminal logs."
+        }
+    },
+    "APPSTATEPATH": "appstate.json",
+    "NPM_FCA": "./fca-maria",
+    "configApi": {
+        "link": [
+            "Đéo có",
+            "https://www.nguyenmanh.name.vn"
+        ],
+        "key": [
+            "MDongVip_6886904368",
+            "x66MGQ25"
+        ],
+        "domain": "https://apibot.pmd06.repl.co",
+        "keyApi": "MDongVip_6886904368"
+    },
+    "autoCleanCache": {
+        "Enable": true,
+        "CachePath": "./modules/commands/cache",
+        "AllowFileExtension": [
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".mp4",
+            ".mp3",
+            ".m4a",
+            ".ttf",
+            ".gif"
+        ]
+    },
+    "version": "4.6.9",
+    "iconUnsend": {
+        "status": true,
+        "icon": "😡"
+    },
+    "FCAOption": {
+        "forceLogin": true,
+        "listenEvents": true,
+        "pauseLog": true,
+        "logLevel": "error",
+        "selfListen": true,
+        "userAgent": "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36 OPR/84.0.4316.21"
+    },
+    "boctham": {
+        "cooldownTime": ""
+    },
+    "cavevip": {
+        "cooldownTime": 1200000
+    },
+    "daily": {
+        "cooldownTime": 43200000,
+        "rewardCoin": 200000
+    },
+    "fbvideo": {
+        "API_KEY": ""
+    },
+    "loto": {
+        "maxPlayers": 10,
+        "getDelay": 8
+    },
+    "math": {
+        "WOLFRAM": ""
+    },
+    "pokemon": {
+        "APIKEY": ""
+    },
+    "rname": {
+        "APIKEY": "mi451266190"
+    },
+    "sim": {
+        "APIKEY": "mzk_NZTUMEHKNZ2R0QVRCIU"
+    },
+    "work": {
+        "cooldownTime": ""
+    },
+    "xidach": {
+        "maxPlayers": 5,
+        "normalWinBonus": 1,
+        "superWinBonus": 2,
+        "epicWinBonus": 4
+    },
+    "log": {
+        "enable": true
+    },
+    "leave": {
+        "status": false,
+        "number": 2
+    },
+    "adminOnly": false,
+    "menu": {
+        "autoUnsend": {
+            "status": true,
+            "timeOut": 60
+        }
+    },
+    "farm": {
+        "cooldownTime": 300000
+    },
+    "spam": {
+        "spamDelay": 2
+    },
+    "spamping": {
+        "spamDelay": 2
+    },
+    "money": {
+        "cooldownTime": 1800000
+    },
+    "mine": {
+        "APIKEY": ""
+    },
+    "adminUpdate": {
+        "sendNoti": true
+    },
+    "god": {
+        "enable": true
+    }
+}

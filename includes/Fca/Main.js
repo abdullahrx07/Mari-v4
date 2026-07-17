@@ -359,13 +359,21 @@ function buildAPI(globalOptions, html, jar, bypass_region) {
     var maybeTiktik = cookie.filter(function(val) { return val.cookieString().split("=")[0] === "i_user"; });
     if (maybeUser.length === 0 && maybeTiktik.length === 0) {
         if (global.Fca.Require.FastConfig.AutoLogin) {
-            return global.Fca.Require.logger.Warning(global.Fca.Require.Language.Index.AutoLogin, function() {
+            global.Fca.Require.logger.Warning(global.Fca.Require.Language.Index.AutoLogin, function() {
                 global.Fca.Action('AutoLogin')
             });
         }
-        else if (!global.Fca.Require.FastConfig.AutoLogin) {
-            return global.Fca.Require.logger.Error(global.Fca.Require.Language.Index.ErrAppState);
+        else {
+            global.Fca.Require.logger.Error(global.Fca.Require.Language.Index.ErrAppState);
         }
+        // BUG FIX: this used to `return logger.Error(...)`, which just logs
+        // and returns `undefined` — the caller (`login()`) then did
+        // `Obj.ctx` on that `undefined` and crashed with an unrelated
+        // "Cannot read properties of undefined (reading 'ctx')" TypeError
+        // instead of cleanly failing. Throwing here lets the existing
+        // `.catch()` in `login()` forward a real, readable error to the
+        // caller's callback (e.g. "invalid or expired appstate").
+        throw new Error(global.Fca.Require.Language.Index.ErrAppState);
     }
     else {
         if (html.indexOf("/checkpoint/block/?next") > -1) log.warn("login", Language.CheckPointLevelI);
