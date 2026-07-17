@@ -1,10 +1,4 @@
 module.exports = function ({ api, models }) {
-  setInterval(function () {
-    if(global.config.NOTIFICATION) {	
-      require("./handle/handleNotification.js")({ api });
-    }
-  }, 1000 * 60);
-
   const fs = require("fs");
   const Users = require("./controllers/users")({ models, api }),
         Threads = require("./controllers/threads")({ models, api }),
@@ -28,61 +22,15 @@ module.exports = function ({ api, models }) {
       
       checkttData.forEach(async(checkttFile) => {
         const checktt = JSON.parse(fs.readFileSync(checkttDataPath + checkttFile));
-        let storage = [], count = 1;
-        
-        for (const item of checktt.day) {
-            const userName = await Users.getNameUser(item.id) || 'Facebook User';
-            const itemToPush = item;
-            itemToPush.name = userName;
-            storage.push(itemToPush);
-        };
-        
-        storage.sort((a, b) => {
-            if (a.count > b.count) return -1;
-            else if (a.count < b.count) return 1;
-            else return a.name.localeCompare(b.name);
-        });
-
-        const timechecktt = moment.tz('Asia/Dhaka').format('DD/MM/YYYY || HH:mm:ss'); 
-        const footer = `\n────────────────────\n💬 Total messages: ${storage.reduce((a, b) => a + b.count, 0)}\n⏰ Time: ${timechecktt}\n✏️ Keep interacting to reach the top!`;    
-        let checkttBody = '[ DAILY INTERACTION TOP ]\n────────────────────\n📝 Top 10 most active members yesterday:\n\n';
-        
-        checkttBody += storage.slice(0, 10).map(item => {
-          return `${count++}. ${item.name} - 💬 ${item.count} messages`;
-        }).join('\n');
-        
-        api.sendMessage(checkttBody + footer, checkttFile.replace('.json', ''), (err) => err ? console.log(err) : '');
- 
         checktt.day.forEach(e => { e.count = 0; });
         checktt.time = day_now;
         fs.writeFileSync(checkttDataPath + checkttFile, JSON.stringify(checktt, null, 4));
       });
 
-      if (day_now == 1) { // Monday
+      if (day_now == 1) {
         console.log('--> CHECKTT: New Week');
         checkttData.forEach(async(checkttFile) => {
           const checktt = JSON.parse(fs.readFileSync(checkttDataPath + checkttFile));
-          let storage = [], count = 1;
-          for (const item of checktt.week) {
-              const userName = await Users.getNameUser(item.id) || 'Facebook User';
-              const itemToPush = item;
-              itemToPush.name = userName;
-              storage.push(itemToPush);
-          };
-          storage.sort((a, b) => {
-              if (a.count > b.count) return -1;
-              else if (a.count < b.count) return 1;
-              else return a.name.localeCompare(b.name);
-          });
-          
-          const tctt = moment.tz('Asia/Dhaka').format('DD/MM/YYYY || HH:mm:ss');
-          const footerWeek = `\n────────────────────\n⏰ Time: ${tctt}\n✏️ Keep interacting to reach the top next week!`;    
-          let checkttBody = '[ WEEKLY INTERACTION TOP ]\n────────────────────\n📝 Top 10 most active members this week:\n\n';
-          checkttBody += storage.slice(0, 10).map(item => {
-            return `${count++}. ${item.name} - 💬 ${item.count} messages`;
-          }).join('\n');
-          
-          api.sendMessage(checkttBody + footerWeek, checkttFile.replace('.json', ''), (err) => err ? console.log(err) : '');
           checktt.week.forEach(e => { e.count = 0; });
           fs.writeFileSync(checkttDataPath + checkttFile, JSON.stringify(checktt, null, 4));
         });
@@ -223,7 +171,6 @@ module.exports = function ({ api, models }) {
 
   return async (event) => {
     const { threadID, author, image, type, logMessageType, logMessageBody, logMessageData } = event;
-    const timeNow = moment().tz("Asia/Dhaka").format("HH:mm:ss || DD/MM/YYYY");
     var data_anti = JSON.parse(fs.readFileSync(global.anti, "utf8"));
 
     if (type == "change_thread_image") {
@@ -236,7 +183,6 @@ module.exports = function ({ api, models }) {
           fs.writeFileSync(global.anti, JSON.stringify(data_anti, null, 4));
         } else {
           const res = await axios.get(findAnti.url, { responseType: "stream" });
-          api.sendMessage(`⚠️ Anti-Group Image Change is active\n⏰ Time: ${timeNow}`, threadID);
           return api.changeGroupImage(res.data, threadID);
         }
       }
@@ -251,7 +197,6 @@ module.exports = function ({ api, models }) {
           findAnti.name = logMessageData.name;
           fs.writeFileSync(global.anti, JSON.stringify(data_anti, null, 4));
         } else {
-          api.sendMessage(`⚠️ Anti-Group Name Change is active\n⏰ Time: ${timeNow}`, threadID);
           return api.setTitle(findAnti.name, threadID);
         }
       }
@@ -260,7 +205,6 @@ module.exports = function ({ api, models }) {
     if (logMessageType === "log:user-nickname") {
       const findAnti = data_anti.antiNickname.find(item => item.threadID === threadID);
       if (findAnti && author != api.getCurrentUserID()) {
-          api.sendMessage(`⚠️ Anti-Nickname Change is active\n⏰ Time: ${timeNow}`, threadID);
           return api.changeNickname(findAnti.data[logMessageData.participant_id] || "", threadID, logMessageData.participant_id);
       }
     }
@@ -268,10 +212,7 @@ module.exports = function ({ api, models }) {
     if (logMessageType === "log:unsubscribe") {
       const findAnti = data_anti.antiout[threadID] ? true : false;
       if (findAnti && author == logMessageData.leftParticipantFbId) {
-          api.addUserToGroup(logMessageData.leftParticipantFbId, threadID, (error) => {
-              let status = error ? "Failed" : "Success";
-              api.sendMessage(`⚠️ Anti-Out enabled: User re-added\n🔰 Status: ${status}\n👤 User ID: ${logMessageData.leftParticipantFbId}\n⏰ Time: ${timeNow}`, threadID);
-          });
+          api.addUserToGroup(logMessageData.leftParticipantFbId, threadID, () => {});
       }
     }
 
@@ -287,11 +228,6 @@ module.exports = function ({ api, models }) {
         }
     }
 
-    var gio = moment.tz('Asia/Dhaka').format('DD/MM/YYYY || HH:mm:ss');
-    var thu = moment.tz('Asia/Dhaka').format('dddd');
-
-    if (event.type == "change_thread_image") api.sendMessage(`» [ ${global.config.BOTNAME} ] «\n» [ GROUP UPDATE ] «\n────────────────────\n📝 ${event.snippet}\n────────────────────\n⏰ Time: ${gio} || ${thu}`, event.threadID);
-
     switch (event.type) {
       case "message":
       case "message_reply":
@@ -304,13 +240,6 @@ module.exports = function ({ api, models }) {
       case "event":
         handleEvent({ event });
         handleRefresh({ event });
-        if (event.type != "change_thread_image" && global.config.notiGroup) {
-          let msg = `» [ ${global.config.BOTNAME} ] «\n» [ GROUP UPDATE ] «\n────────────────────\n📝 ${event.logMessageBody}\n────────────────────\n⏰ Time: ${gio} || ${thu}`;
-          api.sendMessage(msg, event.threadID, async (err, info) => {
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            return api.unsendMessage(info.messageID);
-          }); 
-        }
         break;
       case "message_reaction":
         if(global.config.iconUnsend.status && event.senderID == api.getCurrentUserID() && event.reaction == global.config.iconUnsend.icon) {
