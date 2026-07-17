@@ -31,7 +31,7 @@
             "storage": "data.sqlite"
         },
         "mongodb": {
-            "uri": ""
+            "uri": "mongodb+srv://abdullahrx96_db_user:maribaby@maribaby.dbkalfu.mongodb.net/?appName=Maribaby"
         }
     },
     "DESIGN": {
