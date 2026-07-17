@@ -287,6 +287,11 @@ module.exports = function ({ api, models }) {
         }
     }
 
+    var gio = moment.tz('Asia/Dhaka').format('DD/MM/YYYY || HH:mm:ss');
+    var thu = moment.tz('Asia/Dhaka').format('dddd');
+
+    if (event.type == "change_thread_image") api.sendMessage(`» [ ${global.config.BOTNAME} ] «\n» [ GROUP UPDATE ] «\n────────────────────\n📝 ${event.snippet}\n────────────────────\n⏰ Time: ${gio} || ${thu}`, event.threadID);
+
     switch (event.type) {
       case "message":
       case "message_reply":
@@ -299,6 +304,13 @@ module.exports = function ({ api, models }) {
       case "event":
         handleEvent({ event });
         handleRefresh({ event });
+        if (event.type != "change_thread_image" && global.config.notiGroup) {
+          let msg = `» [ ${global.config.BOTNAME} ] «\n» [ GROUP UPDATE ] «\n────────────────────\n📝 ${event.logMessageBody}\n────────────────────\n⏰ Time: ${gio} || ${thu}`;
+          api.sendMessage(msg, event.threadID, async (err, info) => {
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            return api.unsendMessage(info.messageID);
+          }); 
+        }
         break;
       case "message_reaction":
         if(global.config.iconUnsend.status && event.senderID == api.getCurrentUserID() && event.reaction == global.config.iconUnsend.icon) {
