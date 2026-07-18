@@ -188,9 +188,16 @@ app.get('/', (req, res) => res.send('Maria v3 is running.'));
 // Temporary convenience route: direct download link for the exported project
 // zip. Safe to remove — serves only this one fixed file, nothing dynamic.
 app.get('/download/mari-bot.zip', (req, res) => {
-  const zipPath = require('path').join(__dirname, '..', 'exports', 'mari-bot.zip');
-  if (!fs.existsSync(zipPath)) return res.status(404).send('Not found.');
-  res.download(zipPath, 'mari-bot.zip');
+  const path = require('path');
+  // Try new ST-FCA zip first, then legacy name
+  const candidates = [
+    path.join(__dirname, '..', 'exports', 'mari-bot-stfca.zip'),
+    path.join(__dirname, '..', 'exports', 'mari-bot.zip'),
+    path.join(__dirname, '..', '..', 'mari-bot-stfca.zip'),
+  ];
+  const zipPath = candidates.find(p => fs.existsSync(p));
+  if (!zipPath) return res.status(404).send('Not found.');
+  res.download(zipPath, 'mari-bot-stfca.zip');
 });
 
 app.listen(PORT, () => console.log(`[SERVER] Listening on port ${PORT}`));
