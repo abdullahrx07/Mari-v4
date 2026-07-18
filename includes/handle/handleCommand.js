@@ -170,8 +170,15 @@ module.exports = function ({ api, models, Users, Threads, Currencies }) {
     if (!commandName) {
       if (!prefixUsed) return;
 
-      const threadInfoo =
-        threadInfo.get(threadID) || (await Threads.getInfo(threadID)) || {};
+      const isE2EEThreadA = typeof threadID === "string" && threadID.includes("@");
+      let threadInfoo = {};
+      if (!isE2EEThreadA) {
+        try {
+          threadInfoo = threadInfo.get(threadID) || (await Threads.getInfo(threadID)) || {};
+        } catch (_e) {
+          threadInfoo = {};
+        }
+      }
       const _adminIDsA = (threadInfoo && Array.isArray(threadInfoo.adminIDs)) ? threadInfoo.adminIDs : [];
       const isThreadAdmin = _adminIDsA.some((el) => el.id == senderID);
       const isAdmin = isAdminBot || NDH.includes(senderID) || isThreadAdmin;
@@ -257,10 +264,23 @@ module.exports = function ({ api, models, Users, Threads, Currencies }) {
     //   0 = Regular user
 
     let permssion = 0;
+    // E2EE threadIDs are JIDs (contain "@") — api.getThreadInfo() only understands
+    // real Facebook thread IDs, so calling it with a JID throws. That throw was
+    // unhandled here (no try/catch around this block), which silently killed
+    // the whole command — including things like !inbox — before it ever ran.
+    const isE2EEThread = typeof threadID === "string" && threadID.includes("@");
     // For inbox DMs (senderID === threadID), adminIDs doesn't exist — guard against crash.
-    const isInboxDM = senderID === threadID;
+    const isInboxDM = senderID === threadID || isE2EEThread;
     if (isInboxDM && allowInbox === false) return; // respect config: allowInbox=false blocks DM commands
-    const threadInfoo = threadInfo.get(threadID) || (await Threads.getInfo(threadID)) || {};
+
+    let threadInfoo = {};
+    if (!isE2EEThread) {
+      try {
+        threadInfoo = threadInfo.get(threadID) || (await Threads.getInfo(threadID)) || {};
+      } catch (_e) {
+        threadInfoo = {};
+      }
+    }
     const _adminIDs   = (threadInfoo && Array.isArray(threadInfoo.adminIDs)) ? threadInfoo.adminIDs : [];
     const find = _adminIDs.find((el) => el.id == senderID);
 
