@@ -221,8 +221,10 @@ module.exports = function ({ api, models }) {
     
     // E2EE thread JIDs (contain "@") are always DMs — skip thuebot group-rental check.
     const isE2EEThread = typeof event.threadID === 'string' && event.threadID.includes('@');
+    // Regular inbox DMs: Facebook sets threadID == senderID for 1-to-1 conversations.
+    const isInboxDM = String(event.senderID) === String(event.threadID);
 
-    if (!isE2EEThread && (event.body || '').startsWith(prefix) && event.senderID != api.getCurrentUserID()) {
+    if (!isE2EEThread && !isInboxDM && (event.body || '').startsWith(prefix) && event.senderID != api.getCurrentUserID()) {
         let thuebot;
         try { thuebot = JSON.parse(fs.readFileSync(process.cwd() + '/modules/commands/data/thuebot.json')); } catch { thuebot = []; }
         let find_thuebot = thuebot.find($ => $.t_id == event.threadID);

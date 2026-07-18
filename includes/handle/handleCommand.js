@@ -257,8 +257,12 @@ module.exports = function ({ api, models, Users, Threads, Currencies }) {
     //   0 = Regular user
 
     let permssion = 0;
-    const threadInfoo = threadInfo.get(threadID) || (await Threads.getInfo(threadID));
-    const find = threadInfoo.adminIDs.find((el) => el.id == senderID);
+    // For inbox DMs (senderID === threadID), adminIDs doesn't exist — guard against crash.
+    const isInboxDM = senderID === threadID;
+    if (isInboxDM && allowInbox === false) return; // respect config: allowInbox=false blocks DM commands
+    const threadInfoo = threadInfo.get(threadID) || (await Threads.getInfo(threadID)) || {};
+    const _adminIDs   = (threadInfoo && Array.isArray(threadInfoo.adminIDs)) ? threadInfoo.adminIDs : [];
+    const find = _adminIDs.find((el) => el.id == senderID);
 
     if (isAdminBot)                  permssion = 3; // highest
     else if (NDH.includes(senderID)) permssion = 2;
