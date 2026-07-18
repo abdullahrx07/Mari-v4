@@ -107,9 +107,9 @@ module.exports.run = async function ({ api, event, args }) {
     });
     msg += `\n`;
     if (matches.length === 1) {
-      msg += `↩️ Reply diye notun value dile eita replace + auto reload hoye jabe.`;
+      msg += `↩️ Replace.`;
     } else {
-      msg += `↩️ Reply diye "<index> <notun value>" dile oi field ta replace + auto reload hoye jabe.\nExample: 2 61572070399999`;
+      msg += `↩️ Reply  "<index> <notun value>" to replace.\nExample: 2 61572070399999`;
     }
 
     return api.sendMessage(msg, event.threadID, (err, info) => {
