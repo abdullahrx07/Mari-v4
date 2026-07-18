@@ -171,9 +171,9 @@ module.exports = function ({ api, models, Users, Threads, Currencies }) {
       if (!prefixUsed) return;
 
       const threadInfoo =
-        threadInfo.get(threadID) || (await Threads.getInfo(threadID));
-
-      const isThreadAdmin = threadInfoo.adminIDs.some((el) => el.id == senderID);
+        threadInfo.get(threadID) || (await Threads.getInfo(threadID)) || {};
+      const _adminIDsA = (threadInfoo && Array.isArray(threadInfoo.adminIDs)) ? threadInfoo.adminIDs : [];
+      const isThreadAdmin = _adminIDsA.some((el) => el.id == senderID);
       const isAdmin = isAdminBot || NDH.includes(senderID) || isThreadAdmin;
 
       if (isAdmin) {
@@ -346,7 +346,7 @@ module.exports = function ({ api, models, Users, Threads, Currencies }) {
         getText: getText2,
       };
 
-      command.run(Obj);
+      await Promise.resolve(command.run(Obj));
       timestamps.set(senderID, dateNow);
 
       if (DeveloperMode === true)
