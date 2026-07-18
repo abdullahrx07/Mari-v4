@@ -247,6 +247,7 @@ module.exports = function ({ api, models }) {
       // already routes through the Labyrinth bridge automatically.
       case "e2ee_message":
       case "e2ee_message_reply":
+        handleCreateDatabase({ event });
         handleCommand({ event });
         handleReply({ event });
         handleCommandEvent({ event });

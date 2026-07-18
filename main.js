@@ -585,5 +585,8 @@ loginApiData.setOptions(global.config.FCAOption)
     console.error(error)
   }
 })()
-process.on('unhandledRejection', (err, p) => {}).on('uncaughtException', err => { console.log(err);
+process.on('unhandledRejection', (err, p) => {
+  console.error('[unhandledRejection]', err);
+}).on('uncaughtException', err => {
+  console.error('[uncaughtException]', err);
 });
