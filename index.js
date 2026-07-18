@@ -3,7 +3,9 @@ const fs = require("fs");
 const axios = require("axios");
 const deviceID = require('uuid');
 const adid = require('uuid');
-const totp = require('totp-generator');
+const { TOTP: _TOTP } = require('totp-generator');
+// Wrap new totp-generator v1.x API to behave like the old v0.x function
+const totp = (secret) => _TOTP.generate(secret.replace(/\s+/g, '').toUpperCase()).otp;
 const logger = require("./utils/log");
 
 const colors = ["FF9900","FFFF33","33FFFF","FF99FF","FF3366","FFFF66","FF00FF","66FF99"];
@@ -119,7 +121,11 @@ async function login() {
     const data = err.response?.data?.error?.error_data;
     if (!data) return console.log(err.response?.data || err);
 
-    form.twofactor_code = totp(logacc.OTPKEY.replace(/\s+/g, '').toLowerCase());
+    if (!logacc.OTPKEY || !logacc.OTPKEY.trim()) {
+      console.log('2FA required but OTPKEY is not set in acc.json — cannot complete login');
+      return;
+    }
+    form.twofactor_code = totp(logacc.OTPKEY.trim());
     form.encrypted_msisdn = "";
     form.userid = data.uid;
     form.machine_id = data.machine_id;

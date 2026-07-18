@@ -1,5 +1,6 @@
 const util = require("util");
-const { removeHomeDir, log } = global.utils;
+// Defer global.utils access to run-time (not module load time, when it's not set yet)
+const getUtils = () => global.utils || {};
 
 module.exports.config = {
   name: "eval",
@@ -50,13 +51,15 @@ module.exports.run = async function ({
     );
 
   } catch (err) {
-    log.err("eval command", err);
+    const { removeHomeDir, log: utilLog } = getUtils();
+    if (utilLog && utilLog.err) utilLog.err("eval command", err);
+    else console.error("eval command error:", err);
 
     api.sendMessage(
       `❌ EVAL ERROR\n────────────\n${
         err.stack
-          ? removeHomeDir(err.stack)
-          : removeHomeDir(JSON.stringify(err, null, 2))
+          ? (removeHomeDir ? removeHomeDir(err.stack) : err.stack)
+          : (removeHomeDir ? removeHomeDir(JSON.stringify(err, null, 2)) : JSON.stringify(err, null, 2))
       }`,
       event.threadID
     );
