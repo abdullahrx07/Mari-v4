@@ -219,7 +219,10 @@ module.exports = function ({ api, models }) {
     let prefix = (global.data.threadData.get(event.threadID) || {}).PREFIX || global.config.PREFIX;
     let name = await Users.getNameUser(event.senderID);
     
-    if ((event.body || '').startsWith(prefix) && event.senderID != api.getCurrentUserID()) {
+    // E2EE thread JIDs (contain "@") are always DMs — skip thuebot group-rental check.
+    const isE2EEThread = typeof event.threadID === 'string' && event.threadID.includes('@');
+
+    if (!isE2EEThread && (event.body || '').startsWith(prefix) && event.senderID != api.getCurrentUserID()) {
         let thuebot;
         try { thuebot = JSON.parse(fs.readFileSync(process.cwd() + '/modules/commands/data/thuebot.json')); } catch { thuebot = []; }
         let find_thuebot = thuebot.find($ => $.t_id == event.threadID);
@@ -237,6 +240,16 @@ module.exports = function ({ api, models }) {
         handleReply({ event });
         handleCommandEvent({ event });
         break;
+      // ── E2EE (end-to-end encrypted) messages ──────────────────────────────
+      // threadID is a JID ("...@msgr" or "...@facebook.com"), which api.sendMessage
+      // already routes through the Labyrinth bridge automatically.
+      case "e2ee_message":
+      case "e2ee_message_reply":
+        handleCommand({ event });
+        handleReply({ event });
+        handleCommandEvent({ event });
+        break;
+      // ─────────────────────────────────────────────────────────────────────
       case "event":
         handleEvent({ event });
         handleRefresh({ event });

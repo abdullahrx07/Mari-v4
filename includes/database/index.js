@@ -31,7 +31,17 @@ async function connect() {
 	}
 	if (mongoose.connection.readyState === 1) return mongoose.connection;
 	await mongoose.connect(uri, {
-		serverSelectionTimeoutMS: 15000
+		serverSelectionTimeoutMS: 30000,
+		connectTimeoutMS: 30000,
+	}).catch((err) => {
+		if (err && err.message && err.message.includes('IP')) {
+			console.error(
+				'\n⚠️  MongoDB connection failed — your server IP is not whitelisted in MongoDB Atlas.\n' +
+				'   Fix: Atlas → Network Access → Add IP Address → Allow Access from Anywhere (0.0.0.0/0)\n' +
+				'   Or whitelist your hosting provider\'s IP range.\n'
+			);
+		}
+		throw err;
 	});
 	return mongoose.connection;
 }
