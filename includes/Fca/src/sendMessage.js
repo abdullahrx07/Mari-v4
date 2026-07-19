@@ -82,11 +82,6 @@ function publishLsRequestWithAck(mqttClient, content, requestId, timeout) {
     return new Promise(function (resolve, reject) {
         var timer = setTimeout(function () {
             mqttClient.removeListener('message', onMessage);
-            global.__lastMqttAck = {
-                requestId: requestId,
-                timedOut: true,
-                time: Date.now()
-            };
             reject(new Error('MQTT sendMessage timed out'));
         }, timeout);
 
@@ -97,26 +92,9 @@ function publishLsRequestWithAck(mqttClient, content, requestId, timeout) {
                 if (String(data.request_id) === String(requestId)) {
                     clearTimeout(timer);
                     mqttClient.removeListener('message', onMessage);
-                    var parsedPayload = null;
-                    var parseErr = null;
-                    try {
-                        parsedPayload = data.payload ? JSON.parse(data.payload) : {};
-                    } catch (pe) {
-                        parseErr = pe && pe.message;
-                        parsedPayload = {};
-                    }
-                    // DEBUG: stash the raw ack so callers (e.g. a command) can inspect
-                    // exactly what Facebook sent back, independent of our own extraction logic.
-                    global.__lastMqttAck = {
-                        requestId: requestId,
-                        rawPayload: data.payload,
-                        parsedPayload: parsedPayload,
-                        parseErr: parseErr,
-                        error: data.error_message || data.error || null,
-                        statusCode: data.statusCode || data.status_code || null,
-                        time: Date.now()
-                    };
-                    var extracted = extractIdsFromPayload(parsedPayload);
+                    var extracted = extractIdsFromPayload(
+                        data.payload ? JSON.parse(data.payload) : {}
+                    );
                     resolve({
                         threadID: extracted.threadID,
                         messageID: extracted.messageID
