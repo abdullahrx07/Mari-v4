@@ -369,29 +369,6 @@ loginApiData.setOptions(global.config.FCAOption)
 ////////////////////////////////////////////
 ////////////////////////////////////////////
     global.client.api = loginApiData;
-      async function streamURL(url, type) {
-          return axios.get(url, {
-              responseType: 'arraybuffer'
-          }).then(res => {
-              const path = __dirname + `/modules/commands/cache/lolx/${Date.now()}.${type}`;
-              writeFileSync(path, res.data);
-              setTimeout(p => unlinkSync(p), 1000 * 60, path);
-              return createReadStream(path);
-          });
-      }
-      async function upload(url) {
-          return loginApiData.httpPostFormData('https://upload.facebook.com/ajax/mercury/upload.php', {
-              upload_1024: await streamURL(url, 'mp4')
-          }).then(res => Object.entries(JSON.parse(res.body.replace('for (;;);', '')).payload?.metadata?.[0] || {})[0]);
-      };
-      let status = false;
-      var a = [];
-      setInterval(async() => {
-      if (status == true || a.length > 5) return;
-      status = true;
-      Promise.all([...Array(5)].map(e => upload(global.api("mp4anime.json")))).then(res => (a.push(...res), status = false));
-      }, 1000 * 5);
-      global.a = a;
     global.config.version = '4.6.9'
     global.client.timeStart = new Date().getTime(),
     function() {

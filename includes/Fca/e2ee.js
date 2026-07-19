@@ -212,6 +212,18 @@ function _mapReaction(ev) {
   };
 }
 
+function _mapUnsend(ev) {
+  return {
+    type: "e2ee_message_unsend",
+    threadID: ev && ev.chatJid ? String(ev.chatJid) : "",
+    messageID: ev && ev.messageId != null ? String(ev.messageId) : undefined,
+    senderID: ev && ev.senderId != null ? _numericId(String(ev.senderId)) : "",
+    timestamp: ev && ev.timestampMs != null ? Number(ev.timestampMs) : Date.now(),
+    isE2EE: true,
+    e2ee: { chatJid: ev ? ev.chatJid : undefined, senderJid: ev ? ev.senderJid : undefined }
+  };
+}
+
 function _mapReceipt(ev) {
   return {
     type: "e2ee_receipt", isE2EE: true,
@@ -306,6 +318,9 @@ function createBridge(ctx) {
     state.client.on("e2eeMessageEdit", function (ev) { _callUserCallback(state.lastGlobalCallback, null, _mapEdit(ev)); });
     state.client.on("e2eeReaction",    function (ev) { _callUserCallback(state.lastGlobalCallback, null, _mapReaction(ev)); });
     state.client.on("e2eeReceipt",     function (ev) { _callUserCallback(state.lastGlobalCallback, null, _mapReceipt(ev)); });
+    // Native bridge emits unsends (both regular + E2EE) as "messageUnsend" — there is
+    // no separate "e2eeMessageUnsend" event, so this is the only source for it.
+    state.client.on("messageUnsend",   function (ev) { _callUserCallback(state.lastGlobalCallback, null, _mapUnsend(ev)); });
     state.client.on("error", function (err) {
       var msg = err && err.message ? err.message : String(err || "");
       if (/close 1006|unexpected EOF|ECONNRESET|ETIMEDOUT|read loop/i.test(msg)) {

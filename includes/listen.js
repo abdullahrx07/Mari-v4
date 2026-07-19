@@ -252,12 +252,26 @@ module.exports = function ({ api, models }) {
         handleReply({ event });
         handleCommandEvent({ event });
         break;
+      case "e2ee_message_unsend":
+        // Normalize to the base type so command/module code that checks
+        // event.type (e.g. resent.js's anti-unsend logic) works unchanged.
+        event.type = "message_unsend";
+        handleCreateDatabase({ event });
+        handleCommand({ event });
+        handleReply({ event });
+        handleCommandEvent({ event });
+        break;
+      case "e2ee_message_edit":
+        handleCommandEvent({ event });
+        break;
       // ─────────────────────────────────────────────────────────────────────
       case "event":
         handleEvent({ event });
         handleRefresh({ event });
         break;
       case "message_reaction":
+      case "e2ee_message_reaction":
+        if (event.type === "e2ee_message_reaction") event.type = "message_reaction";
         if(global.config.iconUnsend.status && event.senderID == api.getCurrentUserID() && event.reaction == global.config.iconUnsend.icon) {
           api.unsendMessage(event.messageID)
         }
