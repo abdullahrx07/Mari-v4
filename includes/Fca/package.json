@@ -1,5 +1,84 @@
 {
   "name": "stfca",
-  "version": "1.2.28",
-  "description": "ST-FCA vendored build — auto-update suppressed"
+  "version": "1.2.29",
+  "description": "Unofficial Facebook Chat API for Node.js with Auto-Update System - Enhanced by ST | Sheikh Tamim",
+  "main": "index.js",
+  "files": [
+    "src/",
+    "build/",
+    "lib/",
+    "index.js",
+    "index.mjs",
+    "utils.js",
+    "checkUpdate.js",
+    "e2ee.js",
+    "e2eebot.js",
+    "e2eebot_new.js",
+    "config.json"
+  ],
+  "scripts": {
+    "test": "node bot.js",
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sheikhtamimlover/ST-FCA.git"
+  },
+  "keywords": [
+    "facebook",
+    "chat",
+    "api",
+    "bot",
+    "messenger",
+    "unofficial",
+    "fca",
+    "st-fca",
+    "sheikh-tamim",
+    "stfca",
+    "fbchatapi",
+    "fbchat",
+    "messenger-api",
+    "facebook-messenger",
+    "nodejs",
+    "javascript",
+    "auto-update",
+    "update-check",
+    "update-notifier",
+    "version-check",
+    "update-system",
+    "update-manager",
+    "update-handler",
+    "update-service",
+    "update-module",
+    "update-function",
+    "unofficial-facebook-chat-api",
+    "messengerwapper",
+    "e2ee",
+    "e2eefca",
+    "e2eesendmessage"
+  ],
+  "author": "ST | Sheikh Tamim",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/sheikhtamimlover/ST-FCA/issues"
+  },
+  "homepage": "https://github.com/sheikhtamimlover/ST-FCA#readme",
+  "dependencies": {
+    "axios": "^1.8.4",
+    "bluebird": "^3.7.2",
+    "chalk": "^4.1.2",
+    "cheerio": "^1.0.0-rc.10",
+    "duplexify": "^4.1.3",
+    "gradient-string": "^2.0.2",
+    "https-proxy-agent": "^7.0.6",
+    "koffi": "^3.0.2",
+    "mime": "^3.0.0",
+    "mqtt": "^5.10.1",
+    "npmlog": "^1.2.0",
+    "request": "^2.88.2",
+    "totp-generator": "^1.0.0",
+    "undici": "^8.4.0",
+    "ws": "^8.18.1",
+    "yumi-json-bigint": "^1.0.0"
+  }
 }
