@@ -5,54 +5,100 @@ const Canvas = require("canvas");
 Canvas.registerFont(path.join(__dirname, "cache", "kalpurush.ttf"), {
   family: "Kalpurush"
 });
+
 module.exports.config = {
   name: "joinnoti",
-  version: "4.3.0",
-  credits: "rX Abdullah", //don't change this credite for more update (github.com/rxabdullah007) 
+  version: "4.4.0",
+  credits: "rX Abdullah",
   eventType: ["log:subscribe"],
-  description: "Welcome image with profile borders, inviter shifted, and random background"
+  description: "Welcome image with profile borders. Robust for E2EE and regular groups."
 };
 
-module.exports.run = async function ({ api, event, Users }) {
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
+/** Safe api.getThreadInfo with cached fallback */
+async function safeGetThreadInfo(api, threadID) {
+  // 1. Try in-memory cache first (avoids API call entirely if already loaded)
+  const cached = global.data && global.data.threadInfo && global.data.threadInfo.get(String(threadID));
+  if (cached && cached.threadName) return cached;
+
+  // 2. Fall back to live API
+  try {
+    return await api.getThreadInfo(threadID);
+  } catch (e) {
+    console.error("[joinNoti] getThreadInfo failed:", e.message || e);
+    return null;
+  }
+}
+
+// ─── Main ────────────────────────────────────────────────────────────────────
+
+module.exports.run = async function ({ api, event, Users }) {
   const { threadID, logMessageData } = event;
-  const added = logMessageData.addedParticipants?.[0];
+
+  // E2EE group join events come via MQTT with the numeric thread ID, but if
+  // for any reason a JID arrives here, we skip the canvas path entirely.
+  const isE2EEJid = typeof threadID === "string" && threadID.includes("@");
+
+  // Safely extract the added participant — handle both addedParticipants array
+  // and any single-participant variant some event payloads use.
+  const added =
+    (logMessageData && logMessageData.addedParticipants && logMessageData.addedParticipants[0]) ||
+    (logMessageData && logMessageData.participant) ||
+    null;
+
   if (!added) return;
 
-  const userID = added.userFbId;
+  const userID = String(added.userFbId || added.id || added.userId || "");
+  if (!userID) return;
+
   const botID = api.getCurrentUserID();
 
-  // =============== CASE 1: BOT ADDED ===============
+  // ═══ CASE 1: BOT ADDED ═══════════════════════════════════════════════════
   if (userID == botID) {
-
     api.sendMessage(
       "𝐓𝐡𝐚𝐧𝐤𝐬 𝐟𝐨𝐫 𝐚𝐝𝐝𝐢𝐧𝐠 𝐦𝐞 ❤️\n𝐓𝐲𝐩𝐞 !𝐡𝐞𝐥𝐩 𝐭𝐨 𝐬𝐞𝐞 𝐦𝐲 𝐜𝐨𝐦𝐦𝐚𝐧𝐝𝐬!",
       threadID
     );
-
-    await api.changeNickname("Sııƞƞeɽ мΛяเα 倫ッ", threadID, botID);
-
+    // changeNickname only works on regular (non-JID) threads
+    if (!isE2EEJid) {
+      try { await api.changeNickname("Sııƞƞeɽ мΛяเα 倫ッ", threadID, botID); } catch {}
+    }
     return;
   }
 
-  // =============== CASE 2: NORMAL USER ADDED ===============
+  const userName = added.fullName || added.name || `User ${userID}`;
+  const inviterID = event.author ? String(event.author) : null;
+  const inviterName = inviterID
+    ? await Users.getNameUser(inviterID).catch(() => "someone")
+    : "someone";
 
-  const userName = added.fullName;
+  // ═══ CASE 2: E2EE JID thread — text-only welcome ═════════════════════════
+  if (isE2EEJid) {
+    return api.sendMessage(
+      `🌸 Welcome ${userName} to the group!\n` +
+      `📨 Invited by: ${inviterName}`,
+      threadID
+    );
+  }
 
-  const info = await api.getThreadInfo(threadID);
-  const groupName = info.threadName;
-  const adminCount = info.adminIDs.length;
-  const memberCount = info.participantIDs.length;
+  // ═══ CASE 3: Regular group — canvas welcome image ════════════════════════
 
-  const male = info.userInfo.filter(u => u.gender === "MALE").length;
-  const female = info.userInfo.filter(u => u.gender === "FEMALE").length;
+  // Get thread info safely (cached or live)
+  const info = await safeGetThreadInfo(api, threadID);
 
-  const inviterID = event.author;
-  const inviterName = await Users.getNameUser(inviterID);
+  const groupName    = (info && info.threadName)    || "this group";
+  const adminCount   = (info && Array.isArray(info.adminIDs))   ? info.adminIDs.length   : 0;
+  const memberCount  = (info && Array.isArray(info.participantIDs)) ? info.participantIDs.length : 0;
+  const userInfoArr  = (info && Array.isArray(info.userInfo))   ? info.userInfo          : [];
+  const male         = userInfoArr.filter(u => u.gender === "MALE").length;
+  const female       = userInfoArr.filter(u => u.gender === "FEMALE").length;
+  const groupPhotoURL = (info && info.imageSrc) || null;
 
   const avatarURL = `https://graph.facebook.com/${userID}/picture?width=512&height=512&access_token=6628568379%7Cc1e620fa708a1d5696fb991c1bde5662`;
-  const inviterAvatarURL = `https://graph.facebook.com/${inviterID}/picture?width=512&height=512&access_token=6628568379%7Cc1e620fa708a1d5696fb991c1bde5662`;
-  const groupPhotoURL = info.imageSrc;
+  const inviterAvatarURL = inviterID
+    ? `https://graph.facebook.com/${inviterID}/picture?width=512&height=512&access_token=6628568379%7Cc1e620fa708a1d5696fb991c1bde5662`
+    : null;
 
   const backgrounds = [
     "https://i.postimg.cc/KvKRcxmh/0e915f11edad950d8356a26a96f1d9d9.jpg",
@@ -82,88 +128,128 @@ module.exports.run = async function ({ api, event, Users }) {
   const cache = path.join(__dirname, "cache");
   fs.ensureDirSync(cache);
 
-  const avt = path.join(cache, `avt_${userID}.png`);
-  const inv = path.join(cache, `inv_${inviterID}.png`);
-  const grp = path.join(cache, `grp_${threadID}.png`);
-  const bgFile = path.join(cache, `bg.png`);
-  const out = path.join(cache, `welcome_${userID}.png`);
+  const avt     = path.join(cache, `avt_${userID}.png`);
+  const inv     = path.join(cache, `inv_${inviterID || "unknown"}.png`);
+  const grp     = path.join(cache, `grp_${threadID}.png`);
+  const bgFile  = path.join(cache, `bg_${Date.now()}.png`);
+  const out     = path.join(cache, `welcome_${userID}_${Date.now()}.png`);
+
+  const cleanup = () => {
+    for (const f of [avt, inv, grp, bgFile, out]) {
+      try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
+    }
+  };
 
   try {
+    // Download images — each wrapped independently so one failure doesn't kill everything
+    await axios.get(avatarURL, { responseType: "arraybuffer", timeout: 10000 })
+      .then(r => fs.writeFileSync(avt, r.data))
+      .catch(() => null);
 
-    fs.writeFileSync(avt, (await axios.get(avatarURL, { responseType: "arraybuffer" })).data);
-    fs.writeFileSync(inv, (await axios.get(inviterAvatarURL, { responseType: "arraybuffer" })).data);
-    if (groupPhotoURL)
-      fs.writeFileSync(grp, (await axios.get(groupPhotoURL, { responseType: "arraybuffer" })).data);
-    fs.writeFileSync(bgFile, (await axios.get(backgroundURL, { responseType: "arraybuffer" })).data);
+    if (inviterAvatarURL) {
+      await axios.get(inviterAvatarURL, { responseType: "arraybuffer", timeout: 10000 })
+        .then(r => fs.writeFileSync(inv, r.data))
+        .catch(() => null);
+    }
+
+    if (groupPhotoURL) {
+      await axios.get(groupPhotoURL, { responseType: "arraybuffer", timeout: 10000 })
+        .then(r => fs.writeFileSync(grp, r.data))
+        .catch(() => null);
+    }
+
+    await axios.get(backgroundURL, { responseType: "arraybuffer", timeout: 10000 })
+      .then(r => fs.writeFileSync(bgFile, r.data))
+      .catch(() => null);
+
+    // If the user avatar failed to download, fall back to a text welcome
+    if (!fs.existsSync(avt)) {
+      cleanup();
+      return api.sendMessage(
+        `🌸 Welcome @${userName} to ${groupName}!\nInvited by: ${inviterName}`,
+        threadID
+      );
+    }
 
     const canvas = Canvas.createCanvas(1280, 720);
     const ctx = canvas.getContext("2d");
 
-    const bg = await Canvas.loadImage(bgFile);
-    ctx.drawImage(bg, 0, 0, 1280, 720);
+    // Background
+    if (fs.existsSync(bgFile)) {
+      const bg = await Canvas.loadImage(bgFile);
+      ctx.drawImage(bg, 0, 0, 1280, 720);
+    } else {
+      ctx.fillStyle = "#1a1a2e";
+      ctx.fillRect(0, 0, 1280, 720);
+    }
 
+    // Header bar
     ctx.fillStyle = "rgba(0,0,0,0.55)";
     ctx.fillRect(0, 0, 1280, 130);
 
-    if (groupPhotoURL) {
-      const g = await Canvas.loadImage(grp);
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(80, 65, 50, 0, Math.PI * 2);
-      ctx.strokeStyle = "#00f";
-      ctx.lineWidth = 5;
-      ctx.stroke();
-      ctx.clip();
-      ctx.drawImage(g, 30, 15, 100, 100);
-      ctx.restore();
+    // Group photo (top-left circle)
+    if (groupPhotoURL && fs.existsSync(grp)) {
+      try {
+        const g = await Canvas.loadImage(grp);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(80, 65, 50, 0, Math.PI * 2);
+        ctx.strokeStyle = "#00f";
+        ctx.lineWidth = 5;
+        ctx.stroke();
+        ctx.clip();
+        ctx.drawImage(g, 30, 15, 100, 100);
+        ctx.restore();
+      } catch {}
     }
 
+    // Group name & stats
     ctx.fillStyle = "#fff";
     ctx.font = "bold 35px Kalpurush";
     ctx.fillText(groupName, 180, 60);
-
     ctx.font = "26px Kalpurush";
-    ctx.fillText(`${memberCount} members`, 180, 100);
-    ctx.fillText(`${adminCount} admins`, 360, 100);
+    if (memberCount) ctx.fillText(`${memberCount} members`, 180, 100);
+    if (adminCount)  ctx.fillText(`${adminCount} admins`,   360, 100);
 
+    // Inviter name (top-right)
     ctx.font = "bold 28px Kalpurush";
     ctx.fillStyle = "#fff";
     ctx.fillText("Invited by:", 950, 50);
-
     ctx.font = "bold 30px Kalpurush";
     ctx.fillStyle = "#ff69b4";
     ctx.fillText(inviterName, 950, 90);
 
-    const inviterPic = await Canvas.loadImage(inv);
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(1190, 65, 45, 0, Math.PI * 2);
-    ctx.strokeStyle = "#ff69b4";
-    ctx.lineWidth = 5;
-    ctx.stroke();
-    ctx.clip();
-    ctx.drawImage(inviterPic, 1150, 25, 80, 80);
-    ctx.restore();
+    // Inviter avatar circle (top-right)
+    if (inviterID && fs.existsSync(inv)) {
+      try {
+        const invPic = await Canvas.loadImage(inv);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(1190, 65, 45, 0, Math.PI * 2);
+        ctx.strokeStyle = "#ff69b4";
+        ctx.lineWidth = 5;
+        ctx.stroke();
+        ctx.clip();
+        ctx.drawImage(invPic, 1150, 25, 80, 80);
+        ctx.restore();
+      } catch {}
+    }
 
-    // NEON WELCOME TEXT
+    // Neon WELCOME text
     ctx.textAlign = "center";
     ctx.font = "bold 80px Kalpurush";
-
     ctx.fillStyle = "#39FF14";
     ctx.shadowColor = "#39FF14";
     ctx.shadowBlur = 45;
     ctx.fillText("WELCOME", 640, 200);
-
     ctx.shadowColor = "white";
     ctx.shadowBlur = 15;
     ctx.fillStyle = "#d9ffd9";
     ctx.fillText("WELCOME", 640, 200);
-
-    // Reset Shadow
     ctx.shadowBlur = 0;
     ctx.shadowColor = "transparent";
 
-    // MAIN AVATAR
+    // Main user avatar (center)
     const av = await Canvas.loadImage(avt);
     ctx.save();
     ctx.beginPath();
@@ -175,29 +261,29 @@ module.exports.run = async function ({ api, event, Users }) {
     ctx.drawImage(av, 530, 250, 220, 220);
     ctx.restore();
 
-    // NEON USERNAME
+    // Neon username
     ctx.textAlign = "center";
     ctx.font = "bold 56px Kalpurush";
     ctx.fillStyle = "#39FF14";
     ctx.shadowColor = "#39FF14";
     ctx.shadowBlur = 35;
     ctx.fillText(userName, 640, 520);
-
     ctx.shadowColor = "white";
     ctx.shadowBlur = 12;
     ctx.fillStyle = "#CCFFCC";
     ctx.fillText(userName, 640, 520);
-
     ctx.shadowBlur = 0;
 
+    // Footer bar
     ctx.fillStyle = "rgba(0,0,0,0.55)";
     ctx.fillRect(0, 650, 1280, 70);
-
     ctx.font = "28px Kalpurush";
     ctx.fillStyle = "#fff";
     ctx.textAlign = "center";
-
-    ctx.fillText(`✰ ${memberCount} Members     ♂️ ${male} Male     ♀️ ${female} Female     ★ Thanks for using: Maria v3`, 640, 695);
+    ctx.fillText(
+      `✰ ${memberCount} Members     ♂️ ${male} Male     ♀️ ${female} Female     ★ Thanks for using: Maria v3`,
+      640, 695
+    );
 
     fs.writeFileSync(out, canvas.toBuffer());
 
@@ -208,17 +294,16 @@ module.exports.run = async function ({ api, event, Users }) {
         mentions: [{ tag: `@${userName}`, id: userID }]
       },
       threadID,
-      () => {
-        if (fs.existsSync(avt)) fs.unlinkSync(avt);
-        if (fs.existsSync(inv)) fs.unlinkSync(inv);
-        if (groupPhotoURL && fs.existsSync(grp)) fs.unlinkSync(grp);
-        if (fs.existsSync(bgFile)) fs.unlinkSync(bgFile);
-        if (fs.existsSync(out)) fs.unlinkSync(out);
-      }
+      () => cleanup()
     );
 
   } catch (e) {
-    console.log(e);
-    api.sendMessage("❌ Error while generating welcome image!", threadID);
+    cleanup();
+    console.error("[joinNoti] canvas error:", e.message || e);
+    // Graceful text fallback so the user still gets welcomed
+    api.sendMessage(
+      `🌸 Welcome @${userName} to ${groupName}!\nInvited by: ${inviterName}`,
+      threadID
+    );
   }
 };
