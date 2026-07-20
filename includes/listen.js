@@ -273,6 +273,20 @@ module.exports = function ({ api, models }) {
       case "e2ee_message_reaction":
         if (event.type === "e2ee_message_reaction") event.type = "message_reaction";
         if(global.config.iconUnsend.status && event.senderID == api.getCurrentUserID() && event.reaction == global.config.iconUnsend.icon) {
+          // For E2EE threads: ensure the messageID → JID mapping is registered
+          // before calling unsendMessage. The bot's own sent messages are already
+          // in _e2eeMessageMap (added by sendMessage.js), but as a safety net we
+          // also register from the reaction event's threadID (which IS the JID for
+          // e2ee_message_reaction events, per _mapReaction in e2ee.js).
+          if (event.messageID) {
+            const _reactJid = (event.e2ee && event.e2ee.chatJid)
+              ? String(event.e2ee.chatJid)
+              : (typeof event.threadID === "string" && event.threadID.includes("@") ? event.threadID : null);
+            if (_reactJid) {
+              global._e2eeMessageMap = global._e2eeMessageMap || new Map();
+              global._e2eeMessageMap.set(String(event.messageID), _reactJid);
+            }
+          }
           api.unsendMessage(event.messageID)
         }
         handleReaction({ event });

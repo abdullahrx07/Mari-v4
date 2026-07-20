@@ -10,11 +10,25 @@ module.exports.config = {
 };
 
 module.exports.run = async function ({ api, event, args }) {
-  const { threadID, senderID, isE2EE, isGroup, e2ee } = event;
+  const { senderID, isGroup, e2ee } = event;
+  let { threadID, isE2EE } = event;
+  threadID = String(threadID || "");
+
+  // Fallback E2EE detection: if threadID is a JID (contains "@"), treat as E2EE
+  // even if isE2EE flag was not set by the FCA library for this event type.
+  if (!isE2EE && threadID.includes("@")) isE2EE = true;
 
   const text = args.length > 0
     ? args.join(" ")
     : "📩 This is a private message from the bot to your inbox!";
+
+  const safeSend = (msg, tid) => new Promise((resolve) => {
+    try {
+      api.sendMessage(msg, tid, (err) => resolve(err));
+    } catch (e) {
+      resolve(e);
+    }
+  });
 
   try {
     if (isE2EE) {
@@ -30,27 +44,30 @@ module.exports.run = async function ({ api, event, args }) {
         : threadID;
 
       if (!personalJid) {
-        return api.sendMessage(
+        return safeSend(
           "❌ Couldn't resolve your personal E2EE JID from this group — try messaging the bot directly first.",
           threadID
         );
       }
 
-      if (isGroup) {
-        await api.sendMessage("✅ Sent to your inbox!", threadID);
-      } else {
-        await api.sendMessage("✅ Sending to your inbox...", threadID);
-      }
-      await api.sendMessage(`📩 Inbox\n\n${text}`, personalJid);
+      await safeSend(isGroup ? "✅ Sent to your inbox!" : "✅ Sending to your inbox...", threadID);
+      await safeSend(`📩 Inbox\n\n${text}`, personalJid);
     } else {
       // ── Normal (non-E2EE) path ──────────────────────────────────────────
-      // senderID == threadID for regular DMs; for groups this opens
-      // a new DM thread to the sender.
-      await api.sendMessage("✅ Sending to your inbox...", threadID);
-      await api.sendMessage(`📩 Inbox\n\n${text}`, senderID);
+      // senderID must be a plain numeric Facebook user ID here.
+      // If it looks like a JID, bail rather than sending to a broken thread ID.
+      const sid = String(senderID || "");
+      if (sid.includes("@")) {
+        return safeSend(
+          "❌ Could not determine your inbox ID. If you're in an E2EE thread, message the bot directly first.",
+          threadID
+        );
+      }
+      await safeSend("✅ Sending to your inbox...", threadID);
+      await safeSend(`📩 Inbox\n\n${text}`, sid);
     }
   } catch (err) {
-    return api.sendMessage(
+    return safeSend(
       `❌ Failed to send inbox message:\n${err.message || err}`,
       threadID
     );

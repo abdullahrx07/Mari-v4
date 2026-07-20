@@ -269,8 +269,12 @@ module.exports = function ({ api, models, Users, Threads, Currencies }) {
     // unhandled here (no try/catch around this block), which silently killed
     // the whole command — including things like !inbox — before it ever ran.
     const isE2EEThread = typeof threadID === "string" && threadID.includes("@");
-    // For inbox DMs (senderID === threadID), adminIDs doesn't exist — guard against crash.
-    const isInboxDM = senderID === threadID || isE2EEThread;
+    // isInboxDM: true only for regular 1-to-1 DMs (senderID === threadID).
+    // E2EE DMs: threadID is a JID but isGroup is false — treat the same as inbox DMs.
+    // E2EE GROUP chats must NOT be blocked even when allowInbox === false, since
+    // they are not direct-message threads.
+    const isE2EEDM = isE2EEThread && !event.isGroup;
+    const isInboxDM = senderID === threadID || isE2EEDM;
     if (isInboxDM && allowInbox === false) return; // respect config: allowInbox=false blocks DM commands
 
     let threadInfoo = {};

@@ -159,5 +159,31 @@
     },
     "god": {
         "enable": true
+    },
+    "agent": {
+        "aiProvider": "gemini",
+        "providers": {
+            "openai": {
+                "apiKey": "",
+                "model": "gpt-4o-mini",
+                "baseURL": "https://api.openai.com/v1"
+            },
+            "gemini": {
+                "apiKey": "",
+                "model": "gemini-1.5-flash"
+            },
+            "groq": {
+                "apiKey": "",
+                "model": "llama3-8b-8192",
+                "baseURL": "https://api.groq.com/openai/v1"
+            },
+            "mistral": {
+                "apiKey": "",
+                "model": "mistral-small-latest",
+                "baseURL": "https://api.mistral.ai/v1"
+            }
+        },
+        "systemPrompt": "You are a helpful bot assistant. Be concise and friendly.",
+        "maxTokens": 1024
     }
 }

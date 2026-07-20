@@ -16,15 +16,15 @@ module.exports.config = {
 
 module.exports.run = async function ({ api, event, args }) {
   try {
-    const commandDir = __dirname;
-    const files = fs.readdirSync(commandDir).filter(f => f.endsWith(".js"));
+    // Use already-loaded commands from global.client.commands instead of
+    // re-requiring every file from disk. This is faster, avoids re-running
+    // onLoad hooks, and prevents crashes from partially-cached bad modules.
+    const commandMap = (global.client && global.client.commands) ? global.client.commands : new Map();
 
     let commands = [];
-    for (let file of files) {
+    for (const [, raw] of commandMap) {
       try {
-        const raw = require(path.join(commandDir, file));
         if (!raw) continue;
-
         const cfg = raw.config || {};
         if (!cfg.name) continue;
 

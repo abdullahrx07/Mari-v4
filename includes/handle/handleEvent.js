@@ -23,32 +23,42 @@ module.exports = function ({ api, models, Users, Threads, Currencies }) {
             return;
         }
 
-        // 🟢 get thread info
+        // 🟢 get thread info — skip for E2EE JID threads (threadID contains "@")
+        // api.getThreadInfo() only understands numeric Facebook thread IDs;
+        // calling it with a JID throws, which previously caused an early return
+        // that killed ALL events (including mention handling) for E2EE threads.
+        const isE2EEThread = typeof threadID === "string" && threadID.includes("@");
+
         let threadInfo = {};
-        try {
-            threadInfo = await api.getThreadInfo(threadID);
-        } catch (err) {
-            console.error("getThreadInfo error:", err);
-            return;
-        }
-
-        // 🔥 OVERRIDE event.mentions
-        // id => name (from threadInfo.userInfo)
-        event.mentions = {};
-
-        if (Array.isArray(threadInfo.userInfo)) {
-            for (const user of threadInfo.userInfo) {
-                if (user.id && user.name) {
-                    event.mentions[user.id] = user.name;
-                }
+        if (!isE2EEThread) {
+            try {
+                threadInfo = await api.getThreadInfo(threadID);
+            } catch (err) {
+                // Log but don't return — events should still fire without threadInfo
+                console.error("getThreadInfo error (non-E2EE):", err.message || err);
             }
         }
 
-        // 🧪 optional console log
-        if (Object.keys(event.mentions).length > 0) {
-            console.log("===== event.mentions (FROM THREADINFO) =====");
-            console.log(event.mentions);
-            console.log("===========================================");
+        // 🔥 OVERRIDE event.mentions for non-E2EE threads only.
+        // For E2EE threads the FCA library already populates event.mentions
+        // from the encrypted message payload — don't overwrite it with an
+        // empty object or mention-based commands will break.
+        if (!isE2EEThread) {
+            event.mentions = {};
+            if (Array.isArray(threadInfo && threadInfo.userInfo)) {
+                for (const user of threadInfo.userInfo) {
+                    if (user.id && user.name) {
+                        event.mentions[user.id] = user.name;
+                    }
+                }
+            }
+
+            // 🧪 optional console log
+            if (Object.keys(event.mentions).length > 0 && (global.config && global.config.DeveloperMode)) {
+                console.log("===== event.mentions (FROM THREADINFO) =====");
+                console.log(event.mentions);
+                console.log("===========================================");
+            }
         }
 
         // 🔹 run events

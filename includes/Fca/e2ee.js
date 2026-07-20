@@ -201,12 +201,16 @@ function _mapEdit(ev) {
 }
 
 function _mapReaction(ev) {
+  // Use _numericId for senderID so that api.getCurrentUserID() comparisons work.
+  // Raw ev.senderId is a JID ("61568577897207:69@msgr") — _numericId extracts
+  // the plain numeric prefix so it matches the bot's own numeric ID.
+  var _sid = ev && ev.senderId != null ? _numericId(String(ev.senderId)) : undefined;
   return {
     type: "e2ee_message_reaction",
     threadID: ev && ev.chatJid ? String(ev.chatJid) : "",
     messageID: ev ? ev.messageId : undefined, reaction: ev ? ev.reaction : undefined,
-    senderID: ev && ev.senderId != null ? String(ev.senderId) : undefined,
-    userID:   ev && ev.senderId != null ? String(ev.senderId) : undefined,
+    senderID: _sid,
+    userID:   _sid,
     isE2EE: true,
     e2ee: { chatJid: ev ? ev.chatJid : undefined, senderJid: ev ? ev.senderJid : undefined }
   };

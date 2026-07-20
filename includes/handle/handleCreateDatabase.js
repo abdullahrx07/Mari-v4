@@ -10,8 +10,13 @@ module.exports = function ({ Users, Threads, Currencies }) {
       const stringSenderID = String(senderID);
       const stringThreadID = String(threadID);
 
+      // E2EE JID threads (threadID contains "@") cannot be queried via
+      // api.getThreadInfo() — calling it throws and kills the whole handler.
+      // Skip DB creation for E2EE threads; command state still works in memory.
+      const isE2EEJid = stringThreadID.includes("@") || stringSenderID.includes("@");
+
 try {
-    if (!allThreadID.includes(stringThreadID) && isGroup) {
+    if (!allThreadID.includes(stringThreadID) && isGroup && !isE2EEJid) {
               const threadInfo = await Threads.getInfo(stringThreadID);
 
               const setting = {
