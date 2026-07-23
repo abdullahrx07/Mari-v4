@@ -238,12 +238,26 @@ function _mapEdit(ev) {
 }
 
 function _mapReaction(ev) {
+  var messageId = ev ? ev.messageId : undefined;
+  // Who reacted (the native "senderId" of a reaction event is the reactor,
+  // not the original message's author) — normalize JID -> plain numeric UID.
+  var reactorId = ev && ev.senderId != null && typeof ev.senderId !== "object"
+    ? _numericId(String(ev.senderId)) : undefined;
+  // Who authored the message being reacted to — look it up from the map
+  // populated when that message originally came in (see e2eeMessage handler
+  // below), so `senderID` keeps the same meaning it has for non-E2EE
+  // reactions (original author, used e.g. to detect "bot's own message").
+  var originalAuthor;
+  if (messageId != null && global._e2eeSenderJidMap) {
+    var _owner = global._e2eeSenderJidMap.get(String(messageId));
+    if (_owner) originalAuthor = _numericId(String(_owner));
+  }
   return {
     type: "e2ee_message_reaction",
     threadID: ev && ev.chatJid ? String(ev.chatJid) : "",
-    messageID: ev ? ev.messageId : undefined, reaction: ev ? ev.reaction : undefined,
-    senderID: ev && ev.senderId != null ? String(ev.senderId) : undefined,
-    userID:   ev && ev.senderId != null ? String(ev.senderId) : undefined,
+    messageID: messageId, reaction: ev ? ev.reaction : undefined,
+    senderID: originalAuthor != null ? originalAuthor : reactorId,
+    userID:   reactorId,
     isE2EE: true,
     e2ee: { chatJid: ev ? ev.chatJid : undefined, senderJid: ev ? ev.senderJid : undefined }
   };
