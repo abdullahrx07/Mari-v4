@@ -180,7 +180,12 @@ function _mapMsg(ev) {
   }
   var rawMentions = ev.mentions || [];
   return {
-    type: "e2ee_message", senderID: sid, body: text, threadID: tid,
+    // Mirror normal FCA convention: replies get "message_reply" so command
+    // logic like `event.type === "message_reply"` (used for reply-based
+    // target detection in admin.js, give.js, pp.js, etc.) also works in
+    // E2EE groups. Non-reply messages keep the original "e2ee_message" type.
+    type: messageReply ? "message_reply" : "e2ee_message",
+    senderID: sid, body: text, threadID: tid,
     messageID: ev.id != null ? String(ev.id) : ev.id,
     messageReply: messageReply,
     attachments: Array.isArray(ev.attachments) ? ev.attachments.map(_normalizeAtt) : [],
