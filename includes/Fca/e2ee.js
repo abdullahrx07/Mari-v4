@@ -23,6 +23,43 @@ function _cleanExpired() {
   });
 }
 
+// ── per-message attachment cache ───────────────────────────────────────────
+// The native E2EE bridge's `replyTo` payload only ever carries
+// { messageId, senderId, text } — it never echoes the quoted message's
+// attachments. That meant `event.messageReply.attachments` was always
+// undefined for e2ee replies, so any command that reads
+// `event.messageReply.attachments[0]` (imgur, removebg, 4k, pixup, etc.)
+// crashed with "Cannot read properties of undefined (reading '0')" the
+// moment someone replied to a photo/video with a command.
+// Fix: remember each incoming message's own (already-normalized)
+// attachments by messageID while the bot is running, then when a reply
+// comes in, look the quoted message up by its ID and attach whatever we
+// cached onto `messageReply.attachments`.
+var _msgAttachCache = new Map();
+
+function _cleanExpiredAttach() {
+  var now = Date.now();
+  _msgAttachCache.forEach(function (entry, id) {
+    if (entry.expiry < now) _msgAttachCache.delete(id);
+  });
+}
+
+function _cacheMsgAttachments(messageID, attachments) {
+  if (!messageID || !Array.isArray(attachments) || attachments.length === 0) return;
+  _cleanExpiredAttach();
+  _msgAttachCache.set(String(messageID), {
+    attachments: attachments,
+    expiry: Date.now() + 30 * 60 * 1000 // 30 minutes, plenty for a reply window
+  });
+}
+
+function _getCachedAttachments(messageID) {
+  if (!messageID) return [];
+  var entry = _msgAttachCache.get(String(messageID));
+  if (!entry || entry.expiry < Date.now()) return [];
+  return entry.attachments;
+}
+
 function _startMediaServer() {
   if (_mediaServer && _mediaPort) return Promise.resolve(_mediaPort);
   return new Promise(function (resolve, reject) {
@@ -196,10 +233,19 @@ function _mapMsg(ev) {
       messageID: _rtId != null ? String(_rtId) : undefined,
       senderID:  _rtSender,
       body:      ev.replyTo.text != null ? String(ev.replyTo.text) : "",
+      // The bridge never sends the quoted message's attachments here — pull
+      // them from our own cache (populated below when that message first
+      // came in). Always an array, never undefined, so
+      // `event.messageReply.attachments[0]` no longer throws.
+      attachments: _getCachedAttachments(_rtId),
       isE2EE:    true
     };
   }
   var rawMentions = ev.mentions || [];
+  var normalizedAttachments = Array.isArray(ev.attachments) ? ev.attachments.map(_normalizeAtt) : [];
+  // Remember this message's attachments so that if someone replies to it
+  // later (possibly with a different command), we can recover them above.
+  _cacheMsgAttachments(ev && ev.id, normalizedAttachments);
   return {
     // Mirror normal FCA convention: replies get "message_reply" so command
     // logic like `event.type === "message_reply"` (used for reply-based
@@ -209,7 +255,7 @@ function _mapMsg(ev) {
     senderID: sid, body: text, threadID: tid,
     messageID: ev.id != null ? String(ev.id) : ev.id,
     messageReply: messageReply,
-    attachments: Array.isArray(ev.attachments) ? ev.attachments.map(_normalizeAtt) : [],
+    attachments: normalizedAttachments,
     mentions: _parseMentions(rawMentions, text),
     mentionTypes: _parseMentionTypes(rawMentions),
     mentionedIDs: rawMentions.map(_mentionUid).filter(Boolean),
