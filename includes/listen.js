@@ -272,22 +272,39 @@ module.exports = function ({ api, models }) {
       case "message_reaction":
       case "e2ee_message_reaction":
         if (event.type === "e2ee_message_reaction") event.type = "message_reaction";
-        if(global.config.iconUnsend.status && event.senderID == api.getCurrentUserID() && event.reaction == global.config.iconUnsend.icon) {
-          // For E2EE threads: ensure the messageID → JID mapping is registered
-          // before calling unsendMessage. The bot's own sent messages are already
-          // in _e2eeMessageMap (added by sendMessage.js), but as a safety net we
-          // also register from the reaction event's threadID (which IS the JID for
-          // e2ee_message_reaction events, per _mapReaction in e2ee.js).
-          if (event.messageID) {
-            const _reactJid = (event.e2ee && event.e2ee.chatJid)
-              ? String(event.e2ee.chatJid)
-              : (typeof event.threadID === "string" && event.threadID.includes("@") ? event.threadID : null);
-            if (_reactJid) {
-              global._e2eeMessageMap = global._e2eeMessageMap || new Map();
-              global._e2eeMessageMap.set(String(event.messageID), _reactJid);
+        {
+          // Was the message being reacted to actually sent BY the bot?
+          // - Normal threads: senderID on the reaction event is the
+          //   original message's author, compare directly.
+          // - E2EE threads: prefer the authoritative _e2eeBotSentMsgIds set
+          //   (populated in sendMessage.js for every message the bot sends)
+          //   over senderID, since senderID relies on having seen the
+          //   original message go by first — messages sent before that
+          //   tracking existed (or missed for any reason) would otherwise
+          //   never trigger the unsend.
+          const isE2EEThread = typeof event.threadID === "string" && event.threadID.includes("@");
+          const isOwnMessage = isE2EEThread
+            ? ((global._e2eeBotSentMsgIds && global._e2eeBotSentMsgIds.has(String(event.messageID))) ||
+               String(event.senderID) === String(api.getCurrentUserID()))
+            : String(event.senderID) === String(api.getCurrentUserID());
+
+          if (global.config.iconUnsend.status && isOwnMessage && event.reaction == global.config.iconUnsend.icon) {
+            // For E2EE threads: ensure the messageID → JID mapping is registered
+            // before calling unsendMessage. The bot's own sent messages are already
+            // in _e2eeMessageMap (added by sendMessage.js), but as a safety net we
+            // also register from the reaction event's threadID (which IS the JID for
+            // e2ee_message_reaction events, per _mapReaction in e2ee.js).
+            if (event.messageID) {
+              const _reactJid = (event.e2ee && event.e2ee.chatJid)
+                ? String(event.e2ee.chatJid)
+                : (typeof event.threadID === "string" && event.threadID.includes("@") ? event.threadID : null);
+              if (_reactJid) {
+                global._e2eeMessageMap = global._e2eeMessageMap || new Map();
+                global._e2eeMessageMap.set(String(event.messageID), _reactJid);
+              }
             }
+            api.unsendMessage(event.messageID)
           }
-          api.unsendMessage(event.messageID)
         }
         handleReaction({ event });
         break;
