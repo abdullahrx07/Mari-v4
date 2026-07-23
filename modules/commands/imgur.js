@@ -16,7 +16,16 @@ const axios = global.nodemodule['axios'];
 // `attachments` can be an empty array (e2ee reply to a text-only message, or
 // an attachment type we couldn't recover) — never assume [0] exists.
 const replyAttachments = (event.messageReply && event.messageReply.attachments) || [];
-var linkanh = (replyAttachments[0] && replyAttachments[0].url) || (args && args.join(" "));
+var attachment = replyAttachments[0];
+
+// E2EE attachments arrive with encrypted fields (directPath/mediaKey/...) and
+// no usable `.url` — they need to be downloaded+decrypted first via the
+// bridge's resolveE2EEAttachment helper before we have a real link.
+if (attachment && attachment.isE2EE && !(attachment.url && /^https?:\/\//.test(attachment.url)) && typeof api.resolveE2EEAttachment === 'function') {
+  attachment = await api.resolveE2EEAttachment(attachment);
+}
+
+var linkanh = (attachment && attachment.url) || (args && args.join(" "));
  if(!linkanh) return api.sendMessage('「imgur」 Reply to a photo/video or give a link', event.threadID, event.messageID)
 
 const apis = await axios.get('https://raw.githubusercontent.com/shaonproject/Shaon/main/api.json')
