@@ -280,6 +280,37 @@ module.exports = function (defaultFuncs, api, ctx) {
                 if (_rjid) _sendOpts.replyToSenderJid = _rjid;
             }
 
+            // ── E2EE @mention: convert FCA mentions [{tag,id}] → bridge format ──
+            // The bridge (and native MxSendE2EEMessage) accepts:
+            //   opts.mentions = [{ userId: "12345", offset: N, length: N }, ...]
+            // where offset/length describe the *display name* (without leading @)
+            // inside the message text — the same convention as the Labyrinth /
+            // mautrix-meta mention protocol (textfmt/mentions.go: UTF-16 offsets).
+            // For JS strings (all BMP characters) char offset == UTF-16 offset.
+            if (Array.isArray(_form.mentions) && _form.mentions.length > 0) {
+                var _bridgeMentions = [];
+                for (var _mi = 0; _mi < _form.mentions.length; _mi++) {
+                    var _m = _form.mentions[_mi]; if (!_m || !_m.id) continue;
+                    var _tag         = String(_m.tag || "");
+                    var _displayName = _tag.replace(/^@+/, "");
+                    var _uid         = String(_m.id);
+                    // Honour explicit fromIndex when provided by the caller (e.g.
+                    // buildMentionData already computed it); otherwise scan the text.
+                    var _searchFrom = typeof _m.fromIndex === "number" ? _m.fromIndex : 0;
+                    var _idx = _text.indexOf(_tag, _searchFrom);
+                    if (_idx >= 0) {
+                        // Offset is the position of the display name (skip the "@")
+                        _idx += _tag.length - _displayName.length;
+                    } else {
+                        // Fallback: find display name without "@" prefix
+                        _idx = _text.indexOf(_displayName, _searchFrom);
+                        if (_idx < 0) _idx = 0;
+                    }
+                    _bridgeMentions.push({ userId: _uid, offset: _idx, length: _displayName.length });
+                }
+                if (_bridgeMentions.length > 0) _sendOpts.mentions = _bridgeMentions;
+            }
+
             var _e2eePromise = (async function () {
                 var _last;
                 // sendMediaE2EE: send each attachment

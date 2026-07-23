@@ -127,12 +127,15 @@ var native = {
   }), "searchUsers"),
   pollEvents: /* @__PURE__ */ __name((handle, timeoutMs) => callAsync("MxPollEvents", { handle, timeoutMs }), "pollEvents"),
   // E2EE functions
-  sendE2EEMessage: /* @__PURE__ */ __name((handle, chatJid, text, replyToId, replyToSenderJid) => callAsync("MxSendE2EEMessage", {
+  sendE2EEMessage: /* @__PURE__ */ __name((handle, chatJid, text, replyToId, replyToSenderJid, mentionIds, mentionOffsets, mentionLengths) => callAsync("MxSendE2EEMessage", {
     handle,
     chatJid,
     text,
     replyToId,
-    replyToSenderJid
+    replyToSenderJid,
+    mentionIds,
+    mentionOffsets,
+    mentionLengths
   }), "sendE2EEMessage"),
   sendE2EEReaction: /* @__PURE__ */ __name((handle, chatJid, messageId, senderJid, emoji) => callAsync("MxSendE2EEReaction", { handle, chatJid, messageId, senderJid, emoji }), "sendE2EEReaction"),
   sendE2EETyping: /* @__PURE__ */ __name((handle, chatJid, isTyping) => callAsync("MxSendE2EETyping", { handle, chatJid, isTyping }), "sendE2EETyping"),
@@ -555,7 +558,14 @@ var Client = class extends EventEmitter {
    */
   async sendE2EEMessage(chatJid, text, options) {
     if (!this.handle) throw new Error("Not connected");
-    return native.sendE2EEMessage(this.handle, chatJid, text, options?.replyToId, options?.replyToSenderJid);
+    var opts = options || {};
+    var mentionIds, mentionOffsets, mentionLengths;
+    if (opts.mentions && Array.isArray(opts.mentions) && opts.mentions.length > 0) {
+      mentionIds     = opts.mentions.map(function (m) { return m.userId; });
+      mentionOffsets = opts.mentions.map(function (m) { return m.offset; });
+      mentionLengths = opts.mentions.map(function (m) { return m.length; });
+    }
+    return native.sendE2EEMessage(this.handle, chatJid, text, opts.replyToId, opts.replyToSenderJid, mentionIds, mentionOffsets, mentionLengths);
   }
   /**
    * Send / Remove an E2EE reaction

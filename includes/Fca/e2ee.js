@@ -345,6 +345,15 @@ function createBridge(ctx) {
         global._e2eeMessageMap.set(String(mapped.messageID), String(mapped.threadID));
       if (mapped.messageID && ev.senderJid)
         global._e2eeSenderJidMap.set(String(mapped.messageID), String(ev.senderJid));
+      // Track participants per thread — used by getThreadInfo for E2EE JIDs
+      global._e2eeThreadParticipants = global._e2eeThreadParticipants || new Map();
+      if (ev.chatJid && ev.senderJid) {
+        var _ptid = String(ev.chatJid);
+        if (!global._e2eeThreadParticipants.has(_ptid))
+          global._e2eeThreadParticipants.set(_ptid, new Map());
+        var _puid = _numericId(String(ev.senderJid));
+        if (_puid) global._e2eeThreadParticipants.get(_ptid).set(_puid, String(ev.senderJid));
+      }
       // Register replyTo message ID so unsend/react works on replied messages
       if (ev.replyTo && ev.chatJid) {
         var _rtReg = ev.replyTo.messageId || ev.replyTo.id;
@@ -601,6 +610,94 @@ function patchApiForE2EE(api, ctx) {
         return p;
       }
       return api._origMarkAsRead(threadID, read, callback);
+    };
+  }
+
+  // ── getThreadInfo: E2EE-aware override ───────────────────────────────────
+  // Normal getThreadInfo uses GraphQL with thread_fbid — that fails for E2EE
+  // JIDs (which contain "@"). This override returns a synthetic threadInfo
+  // built from the participant cache populated by incoming message events.
+  // Fields mirror the shape of formatThreadGraphQLResponse() so existing bot
+  // commands (admin checks, name lookups, etc.) work unchanged.
+  if (!api._origGetThreadInfo) {
+    api._origGetThreadInfo = api.getThreadInfo;
+    api.getThreadInfo = function (threadID, callback) {
+      if (!isE2EEChatJid(String(threadID))) {
+        return api._origGetThreadInfo(threadID, callback);
+      }
+
+      var jid     = String(threadID);
+      var isGroup = /@(?:g\.us|group\.facebook\.com|msgr)$/i.test(jid);
+      var ptMap   = global._e2eeThreadParticipants && global._e2eeThreadParticipants.get(jid);
+      var participantIDs = ptMap ? Array.from(ptMap.keys()) : [];
+
+      var returnPromise;
+      if (typeof callback !== "function") {
+        var _res, _rej;
+        returnPromise = new Promise(function (res, rej) { _res = res; _rej = rej; });
+        callback = function (err, data) { if (err) _rej(err); else _res(data); };
+      }
+
+      function buildThreadInfo(userInfoMap) {
+        return {
+          threadID       : jid,
+          // Group name: use cached name if available, else derive from JID prefix
+          threadName     : isGroup
+            ? (global._e2eeThreadNames && global._e2eeThreadNames.get(jid)) ||
+              ("E2EE Group " + jid.split("@")[0])
+            : null,
+          participantIDs : participantIDs,
+          userInfo       : participantIDs.map(function (uid) {
+            var u = userInfoMap && userInfoMap[uid];
+            return {
+              id         : uid,
+              name       : u && u.name      ? u.name      : uid,
+              firstName  : u && u.firstName ? u.firstName : uid,
+              vanity     : u && u.vanity    ? u.vanity    : null,
+              url        : u && u.url       ? u.url       : null,
+              thumbSrc   : u && u.thumbSrc  ? u.thumbSrc  : null,
+              profileUrl : u && u.thumbSrc  ? u.thumbSrc  : null,
+              gender     : u && u.gender    ? u.gender    : 0,
+              type       : "User",
+              isFriend   : false,
+              isBirthday : false
+            };
+          }),
+          unreadCount       : 0,
+          messageCount      : 0,
+          timestamp         : String(Date.now()),
+          muteUntil         : null,
+          isGroup           : isGroup,
+          isSubscribed      : true,
+          isArchived        : false,
+          folder            : "INBOX",
+          cannotReplyReason : null,
+          eventReminders    : null,
+          emoji             : null,
+          color             : null,
+          threadTheme       : null,
+          nicknames         : {},
+          adminIDs          : [],
+          approvalMode      : false,
+          approvalQueue     : [],
+          isE2EE            : true,
+          e2ee              : { chatJid: jid }
+        };
+      }
+
+      if (participantIDs.length > 0) {
+        try {
+          api.getUserInfo(participantIDs, function (err, umap) {
+            callback(null, buildThreadInfo(err ? null : umap));
+          });
+        } catch (_) {
+          callback(null, buildThreadInfo(null));
+        }
+      } else {
+        callback(null, buildThreadInfo(null));
+      }
+
+      return returnPromise;
     };
   }
 }
