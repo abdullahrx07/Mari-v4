@@ -1,0 +1,103 @@
+# If you want to move down the line, please use \n. e.g: SpermLord\nrXAbdullah.
+# After changed, you have to restart the bot to use.
+# Put the # character at the beginning of each sentence if you don't want the code to run those lines. 
+# Thanks to https://www.facebook.com/duong.than.net for translate to English!
+
+# mirai.js 
+
+mirai.errorFormat=মডিউলটি সঠিকভাবে তৈরি হয়নি!
+mirai.nameExist=এই মডিউলের নাম অন্য একটি মডিউলের সাথে মিল আছে!
+mirai.notFoundLanguage=মডিউল %1 আপনার ভাষা সাপোর্ট করে না
+mirai.notFoundPackage=মডিউল %2 এর জন্য প্যাকেজ %1 পাওয়া যায়নি, ইনস্টল করা হচ্ছে...
+mirai.cantInstallPackage=মডিউল %2 এর জন্য প্যাকেজ %1 ইনস্টল করা যায়নি, ত্রুটি: %3
+mirai.loadedPackage=মডিউল %1 এর সব প্যাকেজ সফলভাবে ইনস্টল হয়েছে
+mirai.loadedConfig=মডিউল %1 এর কনফিগ সফলভাবে ইনস্টল হয়েছে
+mirai.cantLoadConfig=মডিউল %1 এর কনফিগ ইনস্টল করা যায়নি, ত্রুটি: %2
+mirai.cantOnload=মডিউল %1 এর সেটআপ চালু করা যায়নি, ত্রুটি: %1
+mirai.successLoadModule=মডিউল %1 সফলভাবে ইনস্টল হয়েছে
+mirai.failLoadModule=মডিউল %1 ইনস্টল করা যায়নি, ত্রুটি: %2
+mirai.finishLoadModule=%1 টি মডিউল কমান্ড এবং %2 টি মডিউল ইভেন্ট সফলভাবে ইনস্টল হয়েছে
+mirai.foundPathAppstate=appstate ফাইল পাওয়া গেছে
+mirai.notFoundPathAppstate=appstate ফাইল পাওয়া যায়নি
+mirai.checkListGban=গ্লোবাল ব্যান তালিকা যাচাই করা হচ্ছে...
+mirai.banDevice=আপনার ডিভাইস miraiproject থেকে ব্যান করা হয়েছে। বিস্তারিত জানতে বা আনব্যান কী পেতে ফেসবুকে যোগাযোগ করুন: https://fb.me/PhamVanDien.User । যদি আপনার কাছে আনব্যান কী থাকে, নিচে প্রদান করুন।
+mirai.keyNotSameFormat=ভুল ফরম্যাট, কোডে অবশ্যই ৬টি সংখ্যা থাকতে হবে।
+mirai.codeInputExpired=আপনার কোডটি ভুল অথবা মেয়াদ শেষ।
+mirai.unbanDeviceSuccess=আপনার ডিভাইস এখন আনব্যান করা হয়েছে, ব্যবহার করতে বট রিস্টার্ট দিন।
+mirai.userBanned=আপনাকে %1 তারিখে miraiproject থেকে ব্যান করা হয়েছে। কারণ: %2। বিস্তারিত জানতে ফেসবুকে যোগাযোগ করুন: https://fb.me/PhamVanDien.User
+mirai.finishCheckListGban=গ্লোবাল ব্যান তালিকা যাচাই সম্পন্ন
+mirai.handleListenError=handleListener এ অপ্রত্যাশিত ত্রুটি ঘটেছে, ত্রুটি: %1
+mirai.warningSourceCode=সোর্স কোডের গঠন পরিবর্তন করা হয়েছে বলে সনাক্ত করা হয়েছে, এখনই বন্ধ করা হচ্ছে!
+mirai.refreshListen=handleListener রিফ্রেশ করা হয়েছে...
+mirai.successConnectDatabase=ডাটাবেসের সাথে সফলভাবে সংযুক্ত হয়েছে!
+mirai.failConnectDatabase=ডাটাবেসের সাথে সংযোগ ব্যর্থ, ত্রুটি: %1
+
+# includes/listen.js
+
+listen.startLoadEnvironment=এনভায়রনমেন্ট ভ্যারিয়েবল লোড করা হচ্ছে...
+listen.loadedEnvironmentThread=থ্রেড এনভায়রনমেন্ট ভ্যারিয়েবল সফলভাবে লোড হয়েছে
+listen.loadedEnvironmentUser=ইউজার এনভায়রনমেন্ট ভ্যারিয়েবল সফলভাবে লোড হয়েছে
+listen.successLoadEnvironment=এনভায়রনমেন্ট ভ্যারিয়েবল সফলভাবে লোড হয়েছে
+listen.failLoadEnvironment=এনভায়রনমেন্ট ভ্যারিয়েবল লোড করা যায়নি, ত্রুটি: %1
+
+# includes/controller/currencies.js
+
+currencies.needObjectOrArray=অবশ্যই Array অথবা Object হতে হবে (বা উভয়ই)
+currencies.needObject=অবশ্যই একটি Object হতে হবে
+currencies.needNumber=অবশ্যই একটি সংখ্যা হতে হবে
+
+# includes/controller/threads.js
+
+threads.needObjectOrArray=অবশ্যই Array অথবা Object হতে হবে (বা উভয়ই)
+threads.needObject=অবশ্যই একটি Object হতে হবে
+
+# includes/controller/users.js
+
+users.needObjectOrArray=অবশ্যই Array অথবা Object হতে হবে (বা উভয়ই)
+users.needObject=অবশ্যই একটি Object হতে হবে
+
+# includes/handle/handleCommand.js
+
+handleCommand.userBanned=
+handleCommand.threadBanned=গ্রুপটি ব্যান করা হয়েছে..!⛔️\nআনব্যানের জন্য মালিক rX Abdullah এর সাথে যোগাযোগ করুন ⚠️
+handleCommand.onlyprefix=> 🎀\nএটি শুধুমাত্র আমার প্রিফিক্স
+handleCommand.commandNotExist=> 🎀\nএই কমান্ডটি এখানে নেই। আপনি কি「 %1 」 ব্যবহার করতে চেয়েছিলেন?
+handleCommand.commandUserBanned=আপনি "%1" কমান্ড ব্যবহার করতে পারবেন না
+handleCommand.threadNotAllowNSFW=এই কমান্ডটি শুধুমাত্র rX এর জন্য
+handleCommand.cantGetInfoThread=আপনার থ্রেডের তথ্য আনা যায়নি, ত্রুটি: %1
+handleCommand.permissionNotEnough="%1" শুধুমাত্র অ্যাডমিন এই কমান্ড ব্যবহার করতে পারবে
+handleCommand.cantSetMessageReaction=MessageReaction সেট করতে অপ্রত্যাশিত ত্রুটি হয়েছে, ত্রুটি: %1
+handleCommand.executeCommand=[ %1 ] কমান্ড ব্যবহার হয়েছে: %2 | ইউজার: %3 | থ্রেড: %4 | আর্গুমেন্ট: %5 | প্রসেসিং সময়: %6ms
+handleCommand.commandError=কমান্ড %1 ব্যবহার করার সময় অপ্রত্যাশিত ত্রুটি হয়েছে, ত্রুটি: %2
+
+# includes/handle/handleCommandEvent.js
+
+handleCommandEvent.moduleError=কমান্ড %1 চালানোর সময় অপ্রত্যাশিত ত্রুটি হয়েছে, ত্রুটি: %2
+
+# includes/handle/handleCreateDatabase.js
+
+handleCreateDatabase.newThread=নতুন থ্রেড: %1
+handleCreateDatabase.newUser=নতুন ইউজার: %1
+
+# includes/handle/handleEvent.js
+
+handleEvent.executeEvent=[ %1 ] ইভেন্ট চালানো হয়েছে: %2 | থ্রেড: %3 | প্রসেসিং সময়: %4ms
+handleEvent.eventError=ইভেন্ট %1 চালানোর সময় ত্রুটি হয়েছে, ত্রুটি: %12
+
+# includes/handle/handleReaction.js
+
+handleReaction.missingValue=আপনার সমস্যার উত্তর দেওয়ার জন্য তথ্য নেই
+handleReaction.executeError=উত্তর দেওয়ার সময় ত্রুটি হয়েছে, ত্রুটি: %1
+
+# includes/handle/handleReply.js
+
+handleReply.missingValue=আপনার সমস্যার উত্তর দেওয়ার জন্য তথ্য নেই
+handleReply.executeError=উত্তর দেওয়ার সময় ত্রুটি হয়েছে, ত্রুটি: %1
+
+# includes/handle/handleSchedule.js
+
+handleSchedule.exectuteError=মডিউল %1 এর শিডিউল চালানোর সময় ত্রুটি হয়েছে, ত্রুটি: %2
+
+# utils/index.js
+
+utils.throwError=[!] আপনি যে কমান্ডটি ব্যবহার করছেন তার সিনট্যাক্স সঠিক নয়, বিস্তারিত জানতে %1help %2 ব্যবহার করুন
