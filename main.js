@@ -522,11 +522,15 @@ loginApiData.setOptions(global.config.FCAOption)
         await new Promise((data) => setTimeout(data, 7000))
         process.exit(1)
       }
-      // Skip non-message noise — both classic MQTT events and E2EE system events
+      // Skip non-message noise — both classic MQTT events and E2EE system events.
+      // NOTE: 'e2ee_message_reaction' must NOT be skipped here — listen.js
+      // already has full handling for it (routes to handleReaction, the
+      // react-to-unsend icon check, etc). Skipping it here silently drops
+      // every reaction sent in E2EE (encrypted) groups.
       const _skipTypes = ['presence', 'typ', 'read_receipt',
         'e2ee_ready', 'e2ee_fully_ready', 'e2ee_connected',
         'e2ee_disconnected', 'e2ee_device_data_changed',
-        'e2ee_receipt', 'e2ee_message_reaction'];
+        'e2ee_receipt'];
       if (_skipTypes.includes(message.type)) { return }
       return listener(message)
     }
