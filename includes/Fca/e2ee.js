@@ -216,7 +216,7 @@ function _mapMsg(ev) {
     hasMentionEveryone: _hasMentionType(rawMentions, "t"),
     hasMentionHere: _hasMentionType(rawMentions, "a"),
     timestamp: ev.timestampMs != null ? Number(ev.timestampMs) : Date.now(),
-    isGroup: /@group\.facebook\.com$/i.test(ev.chatJid || ""),
+    isGroup: /@(?:g\.us|group\.facebook\.com|msgr)$/i.test(ev.chatJid || ""),
     isE2EE: true,
     e2ee: { chatJid: ev.chatJid, senderJid: ev.senderJid, replyTo: ev.replyTo || null, rawMentions: rawMentions },
     args: text.trim() ? text.trim().split(/\s+/) : []
@@ -230,7 +230,7 @@ function _mapEdit(ev) {
     body: text, threadID: ev && ev.chatJid ? String(ev.chatJid) : "",
     messageID: ev ? ev.messageId : undefined,
     timestamp: ev && ev.timestampMs != null ? Number(ev.timestampMs) : Date.now(),
-    isGroup: /@group\.facebook\.com$/i.test(ev && ev.chatJid ? ev.chatJid : ""),
+    isGroup: /@(?:g\.us|group\.facebook\.com|msgr)$/i.test(ev && ev.chatJid ? ev.chatJid : ""),
     isE2EE: true,
     e2ee: { chatJid: ev ? ev.chatJid : undefined, senderJid: ev ? ev.senderJid : undefined },
     args: text.trim() ? text.trim().split(/\s+/) : []
