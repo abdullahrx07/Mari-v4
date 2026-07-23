@@ -383,7 +383,32 @@ function createBridge(ctx) {
       _callUserCallback(state.lastGlobalCallback, null,
         { type: "e2ee_device_data_changed", isE2EE: true, deviceData: p ? p.deviceData : undefined });
     });
-    state.client.on("e2eeMessage", function (ev) {
+    // ── internal helper: decrypt and locally-serve one E2EE attachment ────
+    async function _resolveOneAtt(att) {
+      if (!att || !att.isE2EE) return att;
+      if (att.url && /^https?:\/\//.test(att.url)) return att;
+      if (!att.directPath || !att.mediaKey || !att.mediaSha256 || !att.mimeType) return att;
+      try {
+        var rawType = att.type === "photo" ? "image" : (att.type || "image");
+        var client  = await _ensureClient();
+        var res = await client.downloadE2EEMedia({
+          directPath    : att.directPath,
+          mediaKey      : att.mediaKey,
+          mediaSha256   : att.mediaSha256,
+          mediaEncSha256: att.mediaEncSha256 || undefined,
+          mediaType     : rawType,
+          mimeType      : att.mimeType,
+          fileSize      : att.fileSize != null ? Number(att.fileSize) : undefined
+        });
+        var localUrl = await storeMedia(res.data, res.mimeType || att.mimeType || "image/jpeg");
+        return Object.assign({}, att, { url: localUrl });
+      } catch (e) {
+        log.warn("e2ee", "resolveOneAtt failed:", e && e.message ? e.message : String(e));
+        return att;
+      }
+    }
+
+    state.client.on("e2eeMessage", async function (ev) {
       var mapped = _mapMsg(ev);
       global._e2eeMessageMap   = global._e2eeMessageMap   || new Map();
       global._e2eeSenderJidMap = global._e2eeSenderJidMap || new Map();
@@ -405,7 +430,66 @@ function createBridge(ctx) {
         var _rtReg = ev.replyTo.messageId || ev.replyTo.id;
         if (_rtReg) global._e2eeMessageMap.set(String(_rtReg), String(ev.chatJid));
       }
+
+      // ── FIX: resolve E2EE attachment URLs before caching/emitting ────────
+      // For photos/videos the native bridge gives directPath+mediaKey instead
+      // of a plain URL. Decrypt them now so that (a) the current event and
+      // (b) any future reply to this message both see a real http:// URL in
+      // attachments[0].url — the thing every command checks first.
+      if (mapped.attachments && mapped.attachments.length > 0) {
+        try {
+          var resolved = await Promise.all(mapped.attachments.map(_resolveOneAtt));
+          mapped.attachments = resolved;
+          // Overwrite the cache entry that _mapMsg already wrote so that
+          // reply-based lookups (event.messageReply.attachments) also get
+          // the resolved URLs.
+          if (mapped.messageID) {
+            _msgAttachCache.set(String(mapped.messageID), {
+              attachments: resolved,
+              expiry: Date.now() + 30 * 60 * 1000
+            });
+          }
+        } catch (e) {
+          log.warn("e2ee", "batch resolveAttachments failed:", e && e.message ? e.message : String(e));
+        }
+      }
+
       _callUserCallback(state.lastGlobalCallback, null, mapped);
+    });
+
+    // ── FIX: track full group participant list from native bridge events ───
+    // The native client fires groupParticipantsUpdate (and similar) when
+    // group metadata arrives. We absorb every participant JID we ever see
+    // into _e2eeThreadParticipants so getThreadInfo returns ALL members,
+    // not just those who happened to send a message since bot start.
+    var _safeGroupEvents = ["groupParticipantsUpdate", "groupUpdate", "groupInfo",
+                            "participantsUpdate", "groupMetadata"];
+    _safeGroupEvents.forEach(function(evName) {
+      try {
+        state.client.on(evName, function(info) {
+          if (!info) return;
+          var jid = info.id || info.chatJid || info.groupJid;
+          if (!jid) return;
+          var participants = info.participants || info.participantsList || [];
+          if (!Array.isArray(participants) || participants.length === 0) return;
+          global._e2eeThreadParticipants = global._e2eeThreadParticipants || new Map();
+          var _ptid = String(jid);
+          if (!global._e2eeThreadParticipants.has(_ptid))
+            global._e2eeThreadParticipants.set(_ptid, new Map());
+          var ptMap = global._e2eeThreadParticipants.get(_ptid);
+          participants.forEach(function(p) {
+            var pjid = p.id || p.jid || p.participantJid || (typeof p === "string" ? p : null);
+            if (!pjid) return;
+            var uid = _numericId(String(pjid));
+            if (uid) ptMap.set(uid, String(pjid));
+          });
+          // Cache the group name if provided
+          if (info.subject || info.name || info.groupName) {
+            global._e2eeThreadNames = global._e2eeThreadNames || new Map();
+            global._e2eeThreadNames.set(_ptid, info.subject || info.name || info.groupName);
+          }
+        });
+      } catch (_) { /* native client may not support all event names — ignore */ }
     });
     state.client.on("e2eeMessageEdit", function (ev) { _callUserCallback(state.lastGlobalCallback, null, _mapEdit(ev)); });
     state.client.on("e2eeReaction",    function (ev) { _callUserCallback(state.lastGlobalCallback, null, _mapReaction(ev)); });
@@ -512,6 +596,47 @@ function createBridge(ctx) {
     },
     editMessage  : async function (jid, msgId, text) {
       return (await _ensureClient()).editE2EEMessage(jid, msgId, text);
+    },
+    // ── FIX: fetch full group participant list from native E2EE client ────
+    // Returns an array of { id: "<numericUID>", jid: "<full JID>" } or null
+    // if the native client doesn't expose a group-participants API.
+    getGroupParticipants: async function(jid) {
+      try {
+        var client = await _ensureClient();
+        // Try multiple method names that different bridge versions may expose
+        var methods = ["getGroupParticipants", "getGroupInfo", "getGroupMetadata",
+                       "fetchGroupParticipants", "getGroup"];
+        for (var i = 0; i < methods.length; i++) {
+          if (typeof client[methods[i]] === "function") {
+            var result = await client[methods[i]](jid);
+            if (!result) continue;
+            var participants = result.participants || result.participantsList
+                            || result.members || (Array.isArray(result) ? result : null);
+            if (!Array.isArray(participants) || participants.length === 0) continue;
+            // Normalise to { id, jid } shape and also seed the participant cache
+            var normalised = [];
+            global._e2eeThreadParticipants = global._e2eeThreadParticipants || new Map();
+            if (!global._e2eeThreadParticipants.has(String(jid)))
+              global._e2eeThreadParticipants.set(String(jid), new Map());
+            var ptMap = global._e2eeThreadParticipants.get(String(jid));
+            participants.forEach(function(p) {
+              var pjid = (typeof p === "string") ? p : (p.id || p.jid || p.participantJid || "");
+              if (!pjid) return;
+              var uid = _numericId(pjid);
+              if (!uid) return;
+              ptMap.set(uid, pjid);
+              normalised.push({ id: uid, jid: pjid });
+            });
+            if (result.subject || result.name)
+              (global._e2eeThreadNames = global._e2eeThreadNames || new Map())
+                .set(String(jid), result.subject || result.name);
+            return normalised;
+          }
+        }
+      } catch (e) {
+        log.warn("e2ee", "getGroupParticipants failed:", e && e.message ? e.message : String(e));
+      }
+      return null;
     },
     downloadMedia: async function (opts) {
       var client = await _ensureClient();
@@ -731,17 +856,41 @@ function patchApiForE2EE(api, ctx) {
         };
       }
 
-      if (participantIDs.length > 0) {
+      // ── FIX: fetch full participant list from native E2EE client ─────────
+      // The participant cache only contains senders seen since bot start.
+      // For groups, try the native bridge first so we get ALL members even
+      // before they've sent a message.  The result also seeds the cache so
+      // subsequent calls are instant.
+      var bridge = createBridge(ctx);
+      (async function() {
         try {
-          api.getUserInfo(participantIDs, function (err, umap) {
-            callback(null, buildThreadInfo(err ? null : umap));
-          });
-        } catch (_) {
+          if (isGroup && bridge.isConnected()) {
+            var nativeParticipants = await bridge.getGroupParticipants(jid);
+            if (nativeParticipants && nativeParticipants.length > 0) {
+              // Merge native list into participantIDs (deduplicate)
+              var seenIds = new Set(participantIDs);
+              nativeParticipants.forEach(function(p) {
+                if (p.id && !seenIds.has(p.id)) {
+                  seenIds.add(p.id);
+                  participantIDs.push(p.id);
+                }
+              });
+            }
+          }
+        } catch (_) {}
+
+        if (participantIDs.length > 0) {
+          try {
+            api.getUserInfo(participantIDs, function (err, umap) {
+              callback(null, buildThreadInfo(err ? null : umap));
+            });
+          } catch (_) {
+            callback(null, buildThreadInfo(null));
+          }
+        } else {
           callback(null, buildThreadInfo(null));
         }
-      } else {
-        callback(null, buildThreadInfo(null));
-      }
+      })();
 
       return returnPromise;
     };
