@@ -96,13 +96,33 @@ function _callUserCallback(cb, err, msg) {
 
 // Mention type codes (same as meta-main/mautrix-meta):
 //   p=person  s=silent  t=@everyone  a=@here  c=channel  cu=custom  ai=AI  n=unknown
+// Native bridge payloads have been observed using slightly different key
+// names across versions/thread types (userId / id / participantId / jid),
+// and the id itself can arrive as a full JID ("123456:69@msgr") instead of
+// a plain numeric Facebook UID. `_mentionUid()` normalizes all of that so
+// downstream code (api.getUserInfo, command target-detection, etc.) always
+// gets back a plain numeric string key — the same shape non-E2EE mentions use.
+function _mentionUid(m) {
+  if (!m) return null;
+  var raw = m.userId != null ? m.userId
+          : m.id != null ? m.id
+          : m.participantId != null ? m.participantId
+          : m.jid != null ? m.jid
+          : m.uid != null ? m.uid
+          : null;
+  if (raw == null || (typeof raw === "object")) return null;
+  return _numericId(String(raw));
+}
+
 function _parseMentions(arr, text) {
   var out = {};
-  if (!Array.isArray(arr) || !text) return out;
+  if (!Array.isArray(arr)) return out;
   arr.forEach(function (m) {
-    if (!m || m.userId == null) return;
-    var o = Number(m.offset || 0), l = Number(m.length || 0);
-    out[String(m.userId)] = text.substring(o, o + l);
+    var uid = _mentionUid(m);
+    if (!uid) return;
+    var o = Number(m && m.offset || 0), l = Number(m && m.length || 0);
+    var tag = (text && l > 0) ? text.substring(o, o + l) : "";
+    out[uid] = tag;
   });
   return out;
 }
@@ -111,9 +131,10 @@ function _parseMentionTypes(arr) {
   var out = {};
   if (!Array.isArray(arr)) return out;
   arr.forEach(function (m) {
-    if (!m || m.userId == null) return;
+    var uid = _mentionUid(m);
+    if (!uid) return;
     var t = m.type || m.mentionType || m.t || "p";
-    out[String(m.userId)] = String(t);
+    out[uid] = String(t);
   });
   return out;
 }
@@ -191,7 +212,7 @@ function _mapMsg(ev) {
     attachments: Array.isArray(ev.attachments) ? ev.attachments.map(_normalizeAtt) : [],
     mentions: _parseMentions(rawMentions, text),
     mentionTypes: _parseMentionTypes(rawMentions),
-    mentionedIDs: rawMentions.filter(function(m){ return m && m.userId != null; }).map(function(m){ return String(m.userId); }),
+    mentionedIDs: rawMentions.map(_mentionUid).filter(Boolean),
     hasMentionEveryone: _hasMentionType(rawMentions, "t"),
     hasMentionHere: _hasMentionType(rawMentions, "a"),
     timestamp: ev.timestampMs != null ? Number(ev.timestampMs) : Date.now(),
