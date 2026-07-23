@@ -451,6 +451,10 @@ function createBridge(ctx) {
     unsendMessage: async function (jid, msgId) {
       return (await _ensureClient()).unsendE2EEMessage(jid, msgId);
     },
+    markAsRead   : async function (jid, watermarkTs) {
+      var client = await _ensureClient();
+      return client.markAsRead(jid, watermarkTs != null ? BigInt(watermarkTs) : undefined);
+    },
     editMessage  : async function (jid, msgId, text) {
       return (await _ensureClient()).editE2EEMessage(jid, msgId, text);
     },
@@ -576,6 +580,27 @@ function patchApiForE2EE(api, ctx) {
     api.sendTypingE2EE = function (chatJid, isTyping) {
       if (!isE2EEChatJid(chatJid)) return Promise.resolve();
       return createBridge(ctx).sendTyping(chatJid, isTyping !== false).catch(function () {});
+    };
+  }
+
+  // markAsRead — route E2EE JID threads through the native bridge instead of
+  // the normal FCA path (which posts to a Messenger-only endpoint / publishes
+  // over the regular MQTT connection, neither of which understands E2EE JIDs
+  // and previously caused read receipts to silently no-op for encrypted chats).
+  if (!api._origMarkAsRead) {
+    api._origMarkAsRead = api.markAsRead;
+    api.markAsRead = function (threadID, read, callback) {
+      if (typeof read === "function") { callback = read; read = true; }
+      if (read === undefined) read = true;
+      if (isE2EEChatJid(threadID)) {
+        var p = createBridge(ctx).markAsRead(String(threadID), Date.now());
+        if (typeof callback === "function") {
+          p.then(function (r) { callback(null, r); }).catch(function (e) { callback(e); });
+          return;
+        }
+        return p;
+      }
+      return api._origMarkAsRead(threadID, read, callback);
     };
   }
 }
