@@ -516,11 +516,10 @@ loginApiData.setOptions(global.config.FCAOption)
     const listener = require('./includes/listen')(listenerData)
     async function listenerCallback(error, message) {
       if (error) {
-        logger('Account has been logged out, attempting to log in again!', '[ LOGIN-ACCOUNT ]')
-        var _0x50d0db = await loginAppstate()
-        _0x50d0db
-        await new Promise((data) => setTimeout(data, 7000))
-        process.exit(1)
+        logger('Listener error detected: ' + (error.error || error.message || JSON.stringify(error)), '[ LOGIN-ACCOUNT ]');
+        logger('Attempting process restart to re-authenticate...', '[ LOGIN-ACCOUNT ]');
+        await new Promise((resolve) => setTimeout(resolve, 7000));
+        process.exit(1);
       }
       // Skip non-message noise — both classic MQTT events and E2EE system events.
       // NOTE: 'e2ee_message_reaction' must NOT be skipped here — listen.js
