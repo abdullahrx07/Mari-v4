@@ -60,12 +60,39 @@ function getThreadInfoCached(api, jid) {
   });
 }
 
+// ─── Name matching: body থেকে @mention parse করে participant match ─────────────
+/**
+ * message body-তে "@SomeName" আছে কিনা দেখে participant list থেকে match করে।
+ * শুধু EXACT full-name match (same to same) — partial/word-level match নেই।
+ * Return: { uid: name } শুধু matched জনের, অথবা null যদি কেউ না মেলে।
+ */
+function matchMentionsFromBody(body, allParticipants) {
+  if (!body || !body.includes('@')) return null;
+
+  const bodyLower = body.toLowerCase().replace(/\s+/g, ' ');
+  const matched = {};
+
+  for (const [uid, name] of Object.entries(allParticipants)) {
+    if (!name) continue;
+    const nameLower = name.trim().toLowerCase().replace(/\s+/g, ' ');
+
+    // শুধু exact full name match — "@Jannatul Ferdous Mawa"
+    // (partial/word-level match ইচ্ছাকৃতভাবে বাদ দেওয়া হয়েছে)
+    if (bodyLower.includes('@' + nameLower)) {
+      matched[uid] = name;
+    }
+  }
+
+  return Object.keys(matched).length > 0 ? matched : null;
+}
+
 // ─── Core: patch event.mentions ───────────────────────────────────────────────
 /**
  * patchE2EEMentions(api, event)
  *
- * E2EE group message-এ mentions খালি থাকলে proxy দিয়ে সব member এনে দেবে।
- * event object directly mutate করা হয় (reference পাস) তারপর return করা হয়।
+ * E2EE group message-এ mentions খালি থাকলে proxy দিয়ে
+ * body থেকে নাম parse করে শুধু সেই participant(s) event.mentions-এ দেবে।
+ * "সবাইকে" ঢোকানো হয় না — শুধু যার নাম @mention করা হয়েছে তাকে।
  */
 async function patchE2EEMentions(api, event) {
   // Only for E2EE groups
@@ -82,6 +109,9 @@ async function patchE2EEMentions(api, event) {
     return event;
   }
 
+  // body-তে @ না থাকলে proxy দরকার নেই
+  if (!event.body || !event.body.includes('@')) return event;
+
   // ── Proxy fallback ─────────────────────────────────────────────────────────
   const info = await getThreadInfoCached(api, event.threadID);
   if (!info || !Array.isArray(info.participantIDs) || info.participantIDs.length === 0) {
@@ -89,28 +119,28 @@ async function patchE2EEMentions(api, event) {
   }
 
   const botID = String(api.getCurrentUserID());
-  const mentions = {};
 
+  // সব participant-এর uid→name map (bot বাদে)
+  const allParticipants = {};
   for (const uid of info.participantIDs) {
     const suid = String(uid);
-    if (suid === botID) continue;  // bot নিজেকে mention করবে না
-
+    if (suid === botID) continue;
     const userMeta = Array.isArray(info.userInfo)
       ? info.userInfo.find((u) => String(u.id) === suid)
       : null;
-
-    mentions[suid] = (userMeta && userMeta.name) ? userMeta.name : suid;
+    allParticipants[suid] = (userMeta && userMeta.name) ? userMeta.name : '';
   }
 
-  const memberCount = Object.keys(mentions).length;
+  // body থেকে @mention করা নাম(গুলো) parse করে match খোঁজো
+  const matched = matchMentionsFromBody(event.body, allParticipants);
 
-  if (memberCount > 0) {
-    event.mentions = mentions;
-    event._mentionsFromProxy = true;   // flag — command জানতে পারবে proxy fill করেছে
-    event._proxyThreadInfo = info;     // cache thread info event-এ রাখা
-
-    rxLog.mentionsProxy(event.threadID, memberCount);
+  if (matched && Object.keys(matched).length > 0) {
+    event.mentions = matched;
+    event._mentionsFromProxy = true;
+    event._proxyThreadInfo = info;
+    rxLog.mentionsProxy(event.threadID, Object.keys(matched).length);
   }
+  // match না পেলে event.mentions পরিবর্তন করা হয় না (commands নিজে handle করবে)
 
   return event;
 }
