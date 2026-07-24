@@ -494,40 +494,6 @@ function createBridge(ctx) {
       _callUserCallback(state.lastGlobalCallback, null, mapped);
     });
 
-    // ── FIX: track full group participant list from native bridge events ───
-    // The native client fires groupParticipantsUpdate (and similar) when
-    // group metadata arrives. We absorb every participant JID we ever see
-    // into _e2eeThreadParticipants so getThreadInfo returns ALL members,
-    // not just those who happened to send a message since bot start.
-    var _safeGroupEvents = ["groupParticipantsUpdate", "groupUpdate", "groupInfo",
-                            "participantsUpdate", "groupMetadata"];
-    _safeGroupEvents.forEach(function(evName) {
-      try {
-        state.client.on(evName, function(info) {
-          if (!info) return;
-          var jid = info.id || info.chatJid || info.groupJid;
-          if (!jid) return;
-          var participants = info.participants || info.participantsList || [];
-          if (!Array.isArray(participants) || participants.length === 0) return;
-          global._e2eeThreadParticipants = global._e2eeThreadParticipants || new Map();
-          var _ptid = String(jid);
-          if (!global._e2eeThreadParticipants.has(_ptid))
-            global._e2eeThreadParticipants.set(_ptid, new Map());
-          var ptMap = global._e2eeThreadParticipants.get(_ptid);
-          participants.forEach(function(p) {
-            var pjid = p.id || p.jid || p.participantJid || (typeof p === "string" ? p : null);
-            if (!pjid) return;
-            var uid = _numericId(String(pjid));
-            if (uid) ptMap.set(uid, String(pjid));
-          });
-          // Cache the group name if provided
-          if (info.subject || info.name || info.groupName) {
-            global._e2eeThreadNames = global._e2eeThreadNames || new Map();
-            global._e2eeThreadNames.set(_ptid, info.subject || info.name || info.groupName);
-          }
-        });
-      } catch (_) { /* native client may not support all event names — ignore */ }
-    });
     state.client.on("e2eeMessageEdit", function (ev) { _callUserCallback(state.lastGlobalCallback, null, _mapEdit(ev)); });
     state.client.on("e2eeReaction",    function (ev) { _callUserCallback(state.lastGlobalCallback, null, _mapReaction(ev)); });
     state.client.on("e2eeReceipt",     function (ev) { _callUserCallback(state.lastGlobalCallback, null, _mapReceipt(ev)); });
@@ -633,47 +599,6 @@ function createBridge(ctx) {
     },
     editMessage  : async function (jid, msgId, text) {
       return (await _ensureClient()).editE2EEMessage(jid, msgId, text);
-    },
-    // ── FIX: fetch full group participant list from native E2EE client ────
-    // Returns an array of { id: "<numericUID>", jid: "<full JID>" } or null
-    // if the native client doesn't expose a group-participants API.
-    getGroupParticipants: async function(jid) {
-      try {
-        var client = await _ensureClient();
-        // Try multiple method names that different bridge versions may expose
-        var methods = ["getGroupParticipants", "getGroupInfo", "getGroupMetadata",
-                       "fetchGroupParticipants", "getGroup"];
-        for (var i = 0; i < methods.length; i++) {
-          if (typeof client[methods[i]] === "function") {
-            var result = await client[methods[i]](jid);
-            if (!result) continue;
-            var participants = result.participants || result.participantsList
-                            || result.members || (Array.isArray(result) ? result : null);
-            if (!Array.isArray(participants) || participants.length === 0) continue;
-            // Normalise to { id, jid } shape and also seed the participant cache
-            var normalised = [];
-            global._e2eeThreadParticipants = global._e2eeThreadParticipants || new Map();
-            if (!global._e2eeThreadParticipants.has(String(jid)))
-              global._e2eeThreadParticipants.set(String(jid), new Map());
-            var ptMap = global._e2eeThreadParticipants.get(String(jid));
-            participants.forEach(function(p) {
-              var pjid = (typeof p === "string") ? p : (p.id || p.jid || p.participantJid || "");
-              if (!pjid) return;
-              var uid = _numericId(pjid);
-              if (!uid) return;
-              ptMap.set(uid, pjid);
-              normalised.push({ id: uid, jid: pjid });
-            });
-            if (result.subject || result.name)
-              (global._e2eeThreadNames = global._e2eeThreadNames || new Map())
-                .set(String(jid), result.subject || result.name);
-            return normalised;
-          }
-        }
-      } catch (e) {
-        log.warn("e2ee", "getGroupParticipants failed:", e && e.message ? e.message : String(e));
-      }
-      return null;
     },
     downloadMedia: async function (opts) {
       var client = await _ensureClient();
@@ -870,10 +795,18 @@ function patchApiForE2EE(api, ctx) {
 
   // ── getThreadInfo: E2EE-aware override ───────────────────────────────────
   // Normal getThreadInfo uses GraphQL with thread_fbid — that fails for E2EE
-  // JIDs (which contain "@"). This override returns a synthetic threadInfo
-  // built from the participant cache populated by incoming message events.
-  // Fields mirror the shape of formatThreadGraphQLResponse() so existing bot
-  // commands (admin checks, name lookups, etc.) work unchanged.
+  // JIDs directly. Strategy:
+  //
+  //   • @msgr JIDs  — the numeric prefix IS the Facebook thread_fbid.
+  //     Delegate to the original GraphQL getThreadInfo with that numeric ID.
+  //     This returns ALL participants with full names/photos, exactly like a
+  //     normal group. We then re-stamp threadID back to the full JID and add
+  //     isE2EE: true so bot commands that check threadID still work.
+  //
+  //   • @g.us JIDs  — WhatsApp group IDs; no Facebook thread_fbid exists.
+  //     Fall back to the message-sender cache (same as before). Only users
+  //     who have sent a message since bot start will be in the list.
+  //
   if (!api._origGetThreadInfo) {
     api._origGetThreadInfo = api.getThreadInfo;
     api.getThreadInfo = function (threadID, callback) {
@@ -881,10 +814,10 @@ function patchApiForE2EE(api, ctx) {
         return api._origGetThreadInfo(threadID, callback);
       }
 
-      var jid     = String(threadID);
-      var isGroup = /@(?:g\.us|group\.facebook\.com|msgr)$/i.test(jid);
-      var ptMap   = global._e2eeThreadParticipants && global._e2eeThreadParticipants.get(jid);
-      var participantIDs = ptMap ? Array.from(ptMap.keys()) : [];
+      var jid      = String(threadID);
+      var isMsgr   = /@msgr$/i.test(jid);
+      var isWAGrp  = /@g\.us$/i.test(jid);
+      var isGroup  = isMsgr || isWAGrp || /@group\.facebook\.com$/i.test(jid);
 
       var returnPromise;
       if (typeof callback !== "function") {
@@ -893,75 +826,89 @@ function patchApiForE2EE(api, ctx) {
         callback = function (err, data) { if (err) _rej(err); else _res(data); };
       }
 
-      function buildThreadInfo(userInfoMap) {
-        return {
-          threadID       : jid,
-          // Group name: use cached name if available, else derive from JID prefix
-          threadName     : isGroup
-            ? (global._e2eeThreadNames && global._e2eeThreadNames.get(jid)) ||
-              ("E2EE Group " + jid.split("@")[0])
-            : null,
-          participantIDs : participantIDs,
-          userInfo       : participantIDs.map(function (uid) {
-            var u = userInfoMap && userInfoMap[uid];
-            return {
-              id         : uid,
-              name       : u && u.name      ? u.name      : uid,
-              firstName  : u && u.firstName ? u.firstName : uid,
-              vanity     : u && u.vanity    ? u.vanity    : null,
-              url        : u && u.url       ? u.url       : null,
-              thumbSrc   : u && u.thumbSrc  ? u.thumbSrc  : null,
-              profileUrl : u && u.thumbSrc  ? u.thumbSrc  : null,
-              gender     : u && u.gender    ? u.gender    : 0,
-              type       : "User",
-              isFriend   : false,
-              isBirthday : false
-            };
-          }),
-          unreadCount       : 0,
-          messageCount      : 0,
-          timestamp         : String(Date.now()),
-          muteUntil         : null,
-          isGroup           : isGroup,
-          isSubscribed      : true,
-          isArchived        : false,
-          folder            : "INBOX",
-          cannotReplyReason : null,
-          eventReminders    : null,
-          emoji             : null,
-          color             : null,
-          threadTheme       : null,
-          nicknames         : {},
-          adminIDs          : [],
-          approvalMode      : false,
-          approvalQueue     : [],
-          isE2EE            : true,
-          e2ee              : { chatJid: jid }
-        };
+      // ── @msgr path: delegate to original GraphQL getThreadInfo ──────────
+      // The numeric prefix of a @msgr JID is the Facebook thread_fbid that
+      // the GraphQL endpoint understands.  Call it, then patch the response
+      // so callers see the E2EE JID as threadID (not the bare numeric ID).
+      if (isMsgr) {
+        var numericThreadId = jid.split("@")[0].split(":")[0];
+        return api._origGetThreadInfo(numericThreadId, function (err, info) {
+          if (err || !info) {
+            // GraphQL failed — fall through to cache-based path
+            return _buildFromCache();
+          }
+          // Patch the response: restore JID as threadID and mark as E2EE
+          info.threadID = jid;
+          info.isE2EE   = true;
+          if (!info.e2ee) info.e2ee = {};
+          info.e2ee.chatJid = jid;
+          // Also seed the participant cache so future message-sender tracking
+          // works even for members who haven't spoken yet.
+          if (Array.isArray(info.participantIDs) && info.participantIDs.length > 0) {
+            global._e2eeThreadParticipants = global._e2eeThreadParticipants || new Map();
+            if (!global._e2eeThreadParticipants.has(jid))
+              global._e2eeThreadParticipants.set(jid, new Map());
+            var ptMap = global._e2eeThreadParticipants.get(jid);
+            info.participantIDs.forEach(function (uid) {
+              if (!ptMap.has(String(uid))) ptMap.set(String(uid), String(uid));
+            });
+          }
+          callback(null, info);
+        });
       }
 
-      // ── FIX: fetch full participant list from native E2EE client ─────────
-      // The participant cache only contains senders seen since bot start.
-      // For groups, try the native bridge first so we get ALL members even
-      // before they've sent a message.  The result also seeds the cache so
-      // subsequent calls are instant.
-      var bridge = createBridge(ctx);
-      (async function() {
-        try {
-          if (isGroup && bridge.isConnected()) {
-            var nativeParticipants = await bridge.getGroupParticipants(jid);
-            if (nativeParticipants && nativeParticipants.length > 0) {
-              // Merge native list into participantIDs (deduplicate)
-              var seenIds = new Set(participantIDs);
-              nativeParticipants.forEach(function(p) {
-                if (p.id && !seenIds.has(p.id)) {
-                  seenIds.add(p.id);
-                  participantIDs.push(p.id);
-                }
-              });
-            }
-          }
-        } catch (_) {}
+      // ── @g.us / other path: synthetic response from message-sender cache ─
+      return _buildFromCache();
+
+      function _buildFromCache() {
+        var ptMap = global._e2eeThreadParticipants && global._e2eeThreadParticipants.get(jid);
+        var participantIDs = ptMap ? Array.from(ptMap.keys()) : [];
+
+        function buildThreadInfo(userInfoMap) {
+          return {
+            threadID       : jid,
+            threadName     : isGroup
+              ? (global._e2eeThreadNames && global._e2eeThreadNames.get(jid)) ||
+                ("E2EE Group " + jid.split("@")[0])
+              : null,
+            participantIDs : participantIDs,
+            userInfo       : participantIDs.map(function (uid) {
+              var u = userInfoMap && userInfoMap[uid];
+              return {
+                id         : uid,
+                name       : u && u.name      ? u.name      : uid,
+                firstName  : u && u.firstName ? u.firstName : uid,
+                vanity     : u && u.vanity    ? u.vanity    : null,
+                url        : u && u.url       ? u.url       : null,
+                thumbSrc   : u && u.thumbSrc  ? u.thumbSrc  : null,
+                profileUrl : u && u.thumbSrc  ? u.thumbSrc  : null,
+                gender     : u && u.gender    ? u.gender    : 0,
+                type       : "User",
+                isFriend   : false,
+                isBirthday : false
+              };
+            }),
+            unreadCount       : 0,
+            messageCount      : 0,
+            timestamp         : String(Date.now()),
+            muteUntil         : null,
+            isGroup           : isGroup,
+            isSubscribed      : true,
+            isArchived        : false,
+            folder            : "INBOX",
+            cannotReplyReason : null,
+            eventReminders    : null,
+            emoji             : null,
+            color             : null,
+            threadTheme       : null,
+            nicknames         : {},
+            adminIDs          : [],
+            approvalMode      : false,
+            approvalQueue     : [],
+            isE2EE            : true,
+            e2ee              : { chatJid: jid }
+          };
+        }
 
         if (participantIDs.length > 0) {
           try {
@@ -974,9 +921,9 @@ function patchApiForE2EE(api, ctx) {
         } else {
           callback(null, buildThreadInfo(null));
         }
-      })();
 
-      return returnPromise;
+        return returnPromise;
+      }
     };
   }
 }
