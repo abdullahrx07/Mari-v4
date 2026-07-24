@@ -4,9 +4,17 @@ module.exports = function ({ api, models }) {
         Threads = require("./controllers/threads")({ models, api }),
         Currencies = require("./controllers/currencies")({ models });
   const logger = require("../utils/log.js");
+  const rxLog  = require("../utils/rxLog.js");
   const moment = require('moment-timezone');
-  const axios = require("axios");
+  const axios  = require("axios");
   const config = require("./../config.json");
+
+  // ── RX-FCA: E2EE Mentions Proxy ─────────────────────────────────────────────
+  const { patchE2EEMentions } = require("./Fca/e2eeMentionsProxy");
+  // ── RX-FCA: Thread Sync (on startup) ────────────────────────────────────────
+  const handleThreadSync = require("./handle/handleThreadSync");
+  // ── RX-FCA: Cookie Freshness Check ──────────────────────────────────────────
+  const checkCookieFresh = require("../utils/cookieFresh");
 
   /////////////////////////////////////////////////////////////////////////////
 
@@ -94,6 +102,22 @@ module.exports = function ({ api, models }) {
   const handleCreateDatabase = require("./handle/handleCreateDatabase")({  api, Threads, Users, Currencies, models });
 
   logger.loader(`Ping load source code: ${Date.now() - global.client.timeStart}ms`);
+
+  // ── RX-FCA: Cookie freshness check ──────────────────────────────────────────
+  rxLog.divider('RX-FCA SYSTEM BOOT');
+  try {
+    const appstatePath = global.config.APPSTATEPATH || 'appstate.json';
+    checkCookieFresh(appstatePath);
+  } catch (e) {
+    rxLog.warn('Cookie check skipped: ' + e.message, '〘 COOKIE 〙');
+  }
+
+  // ── RX-FCA: Startup thread sync (fire-and-forget, 5s delay) ─────────────────
+  // 5s delay দেওয়া হয়েছে যাতে bot পুরোপুরি ready হওয়ার পরে sync শুরু হয়
+  setTimeout(() => {
+    handleThreadSync({ api, Threads, Users })
+      .catch(e => rxLog.error('Thread sync error: ' + (e && e.message || e), '〘 THREAD-SYNC 〙'));
+  }, 5000);
   const datlichPath = __dirname + "/../modules/commands/data/datlich.json";
 
   const monthToMSObj = { 1: 2678400000, 2: 2419200000, 3: 2678400000, 4: 2592000000, 5: 2678400000, 6: 2592000000, 7: 2678400000, 8: 2678400000, 9: 2592000000, 10: 2678400000, 11: 2592000000, 12: 2678400000 };
@@ -245,9 +269,13 @@ module.exports = function ({ api, models }) {
       // ── E2EE (end-to-end encrypted) messages ──────────────────────────────
       // threadID is a JID ("...@msgr" or "...@facebook.com"), which api.sendMessage
       // already routes through the Labyrinth bridge automatically.
+      //
+      // RX-FCA Mentions Proxy: E2EE group-এ event.mentions খালি থাকলে
+      // getThreadInfo(numericID) দিয়ে সব participant fetch করে patch করা হয়।
       case "e2ee_message":
       case "e2ee_message_reply":
         handleCreateDatabase({ event });
+        event = await patchE2EEMentions(api, event);  // [RX-FCA] proxy
         handleCommand({ event });
         handleReply({ event });
         handleCommandEvent({ event });
@@ -257,6 +285,7 @@ module.exports = function ({ api, models }) {
         // event.type (e.g. resent.js's anti-unsend logic) works unchanged.
         event.type = "message_unsend";
         handleCreateDatabase({ event });
+        event = await patchE2EEMentions(api, event);  // [RX-FCA] proxy
         handleCommand({ event });
         handleReply({ event });
         handleCommandEvent({ event });
