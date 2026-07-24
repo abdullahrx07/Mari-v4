@@ -193,11 +193,27 @@ module.exports = function ({ api, models }) {
   };
   setInterval(checkAndExecuteEvent, 60000);
 
-  return async (event) => {
-    const { threadID, author, image, type, logMessageType, logMessageBody, logMessageData } = event;
-    var data_anti = JSON.parse(fs.readFileSync(global.anti, "utf8"));
+  const eventTimestamps = [];
 
-    if (type == "change_thread_image") {
+  return async (event) => {
+    const now = Date.now();
+    eventTimestamps.push(now);
+    while (eventTimestamps.length > 0 && eventTimestamps[0] < now - 10000) {
+      eventTimestamps.shift();
+    }
+    const count10s = eventTimestamps.length;
+
+    try {
+      rxLog.capture(event, count10s);
+    } catch (err) {
+      // Ignored
+    }
+
+    try {
+      const { threadID, author, image, type, logMessageType, logMessageBody, logMessageData } = event;
+      var data_anti = JSON.parse(fs.readFileSync(global.anti, "utf8"));
+
+      if (type == "change_thread_image") {
       var threadInf = await api.getThreadInfo(threadID);
       const findAd = threadInf.adminIDs.find((el) => el.id === author);
       const findAnti = data_anti.boximage.find(item => item.threadID === threadID);
@@ -337,6 +353,9 @@ module.exports = function ({ api, models }) {
         }
         handleReaction({ event });
         break;
+    }
+    } catch (err) {
+      rxLog.bug(err, event.type || "unknown");
     }
   };
 };

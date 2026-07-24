@@ -107,6 +107,46 @@ const rxLog = {
   },
 
   /**
+   * Real-time event capture logging with percentage activity rating
+   */
+  capture(event, count10s) {
+    const rate = Math.min(100, Math.round((count10s / 5) * 100));
+    const isHigh = count10s > 5;
+    const tag = isHigh ? '〘 HIGH-CAPTURE 〙' : '〘 NORMAL-CAPTURE 〙';
+    const color = isHigh ? 'warn' : 'success';
+
+    let details = `Type: ${event.type || 'unknown'}`;
+    if (event.threadID) details += ` │ TID: ${event.threadID}`;
+    if (event.senderID) details += ` │ Sender: ${event.senderID}`;
+    if (event.body) {
+      const cleanBody = String(event.body).replace(/\n/g, ' ').substring(0, 50);
+      details += ` │ Body: "${cleanBody}${cleanBody.length >= 50 ? '...' : ''}"`;
+    }
+
+    const label = `${PREFIX} ${tag}`;
+    const formattedLabel = isHigh ? chalk.bold(_grdWarn(label)) : chalk.bold(_grdSuccess(label));
+
+    console.log(`${formattedLabel} ${chalk.cyan(`[Rate: ${rate}%]`)} ${chalk.white(details)}`);
+  },
+
+  /**
+   * Real-time bug/error logging
+   */
+  bug(err, context = '') {
+    const label = `${PREFIX} 〘 BUG/ERROR 〙`;
+    const formattedLabel = chalk.bold(chalk.red(label));
+    const msg = err && err.stack ? err.stack : (err && err.message ? err.message : String(err));
+    console.log(`${formattedLabel} ${chalk.red(`[Context: ${context}]`)} ${chalk.yellow(msg)}`);
+  },
+
+  /**
+   * System log
+   */
+  system(msg, tag = '〘 SYSTEM-LOG 〙') {
+    console.log(`${_tag(tag)} ${chalk.yellowBright(msg)}`);
+  },
+
+  /**
    * Divider / banner line
    */
   divider(text = '') {
