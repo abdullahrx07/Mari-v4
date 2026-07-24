@@ -894,8 +894,12 @@ function markDelivery(ctx, api, threadID, messageID) {
 module.exports = function (defaultFuncs, api, ctx) {
     var globalCallback = identity;
 
-    getSeqID = function getSeqID() {
+    getSeqID = function getSeqID(retryCount) {
+        if (typeof retryCount !== 'number') retryCount = 0;
+        const MAX_RETRIES = 5;
+        const RETRY_DELAY = 3000;
         ctx.t_mqttCalled = false;
+
         defaultFuncs
             .post("https://www.facebook.com/api/graphqlbatch/", ctx.jar, form)
             .then(utils.parseAndCheckLogin(ctx, defaultFuncs))
@@ -908,9 +912,43 @@ module.exports = function (defaultFuncs, api, ctx) {
                     listenMqtt(defaultFuncs, api, ctx, globalCallback);
                 } else throw { error: "getSeqId: no sync_sequence_id found.", res: resData };
             })
-            .catch(function (err) {
+            .catch(async function (err) {
                 log.error("getSeqId", err);
-                if (utils.getType(err) == "Object" && err.error === "Not logged in") ctx.loggedIn = false;
+                const detail = err && err.detail && err.detail.message ? ` | detail=${err.detail.message}` : "";
+                const msg = (err && err.error || err && err.message || String(err || "")) + detail;
+
+                // Check if it's an authentication error versus a transient network error
+                const isAuthError = /Not logged in|no sync_sequence_id found|blocked the login|401|403|checkpoint/i.test(msg);
+
+                if (retryCount < MAX_RETRIES) {
+                    const delayMs = RETRY_DELAY * (retryCount + 1);
+                    log.warn("getSeqId", `Retry ${retryCount + 1}/${MAX_RETRIES} after ${delayMs}ms due to: ${msg}`);
+                    await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+                    // On first retry, try to refresh the session and cookies from facebook homepage
+                    if (retryCount === 0 && ctx.loggedIn) {
+                        try {
+                            log.info("getSeqId", "Refreshing session before retry to fix possible cookie/DTSG desync...");
+                            await utils.get("https://www.facebook.com/", ctx.jar, null, ctx.globalOptions, ctx).then(utils.saveCookies(ctx.jar));
+                            if (typeof api.getFreshDtsg === "function") {
+                                const freshDtsg = await api.getFreshDtsg();
+                                if (freshDtsg) {
+                                    ctx.fb_dtsg = freshDtsg;
+                                    ctx.ttstamp = "2";
+                                    for (let j = 0; j < ctx.fb_dtsg.length; j++) ctx.ttstamp += ctx.fb_dtsg.charCodeAt(j);
+                                    log.info("getSeqId", "Successfully refreshed fb_dtsg!");
+                                }
+                            }
+                        } catch (refreshErr) {
+                            log.warn("getSeqId", `Session refresh failed: ${refreshErr && refreshErr.message ? refreshErr.message : String(refreshErr)}`);
+                        }
+                    }
+                    return getSeqID(retryCount + 1);
+                }
+
+                if (isAuthError) {
+                    ctx.loggedIn = false;
+                }
                 return globalCallback(err);
             });
     };
