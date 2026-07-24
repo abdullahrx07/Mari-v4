@@ -361,16 +361,35 @@ function listenMqtt(defaultFuncs, api, ctx, globalCallback) {
 
     var mqttClient = ctx.mqttClient;
 
+    var _reconnecting = false;
+
     mqttClient.on('error', function (err) {
+        if (_reconnecting) return;
+        _reconnecting = true;
         stopMqttSpinner();
         log.error("listenMqtt", err);
-        mqttClient.end();
-        if (ctx.globalOptions.autoReconnect) getSeqID();
-        else globalCallback({ type: "stop_listen", error: "Connection refused: Server unavailable" }, null);
+        try { mqttClient.end(true); } catch (_) { }
+        if (ctx.globalOptions.autoReconnect) {
+            setTimeout(function () { getSeqID(); }, 1000);
+        } else {
+            globalCallback({ type: "stop_listen", error: "Connection refused: Server unavailable" }, null);
+        }
     });
+    function _handleDrop(reason) {
+        if (_reconnecting) return; // avoid double-reconnect if error + close both fire
+        _reconnecting = true;
+        stopMqttSpinner();
+        log.warn("listenMqtt", "Connection dropped (" + reason + "), reconnecting...");
+        try { mqttClient.end(true); } catch (_) { }
+        if (ctx.globalOptions.autoReconnect) {
+            setTimeout(function () { getSeqID(); }, 1000);
+        } else {
+            globalCallback({ type: "stop_listen", error: "Connection lost: " + reason }, null);
+        }
+    }
 
-    mqttClient.on('close', function () { });
-    mqttClient.on('offline', function () { });
+    mqttClient.on('close', function () { _handleDrop("close"); });
+    mqttClient.on('offline', function () { _handleDrop("offline"); });
     mqttClient.on('reconnect', function () { });
 
     mqttClient.on('connect', function () {
