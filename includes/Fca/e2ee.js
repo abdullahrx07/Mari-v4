@@ -229,15 +229,52 @@ function _mapMsg(ev) {
     var _rtSender = (ev.replyTo.senderId != null &&
                      typeof ev.replyTo.senderId !== 'object')
                   ? _numericId(String(ev.replyTo.senderId)) : "";
+    // ── FIX: also extract media fields the native bridge may carry in replyTo
+    // When someone replies to a bot-sent photo (or any message the bot never
+    // "received"), the cache will be empty. But the native bridge often puts
+    // the quoted message's media metadata directly in replyTo (url, mediaType,
+    // directPath, mediaKey …). Extract all of those so commands like !imgur,
+    // !4k, removebg etc. always see a usable attachment — even when replying
+    // to the bot's own messages.
+    var _cachedAtts = _getCachedAttachments(_rtId);
+    var _replyAtts = _cachedAtts;
+    if (_cachedAtts.length === 0 && ev.replyTo) {
+      var rt = ev.replyTo;
+      // Possible URL fields the bridge may expose for the quoted media
+      var _rtUrl = rt.url || rt.mediaUrl || rt.previewUrl || rt.downloadUrl || null;
+      // Possible media-type / mime fields
+      var _rtRawType = rt.mediaType || rt.type || rt.attachmentType || "";
+      var _rtMime    = rt.mimeType || rt.mimetype || rt.contentType || "";
+      // Only build a synthetic attachment if there is something useful
+      if (_rtUrl || rt.directPath || rt.mediaKey) {
+        var _rtType = _normalizeAttType(_rtRawType) || (
+          _rtMime.startsWith("video") ? "video" :
+          _rtMime.startsWith("audio") ? "audio" : "photo"
+        );
+        _replyAtts = [{
+          type          : _rtType,
+          url           : _rtUrl,
+          mimeType      : _rtMime || (_rtType === "photo" ? "image/jpeg"
+                        : _rtType === "video" ? "video/mp4"
+                        : "application/octet-stream"),
+          filename      : rt.fileName || rt.filename || undefined,
+          fileSize      : rt.fileSize != null ? String(rt.fileSize) : undefined,
+          width         : rt.width  || undefined,
+          height        : rt.height || undefined,
+          duration      : rt.duration || undefined,
+          directPath    : rt.directPath    || undefined,
+          mediaKey      : rt.mediaKey      || undefined,
+          mediaSha256   : rt.mediaSha256   || rt.fileSha256   || undefined,
+          mediaEncSha256: rt.mediaEncSha256 || undefined,
+          isE2EE        : true
+        }];
+      }
+    }
     messageReply = {
       messageID: _rtId != null ? String(_rtId) : undefined,
       senderID:  _rtSender,
       body:      ev.replyTo.text != null ? String(ev.replyTo.text) : "",
-      // The bridge never sends the quoted message's attachments here — pull
-      // them from our own cache (populated below when that message first
-      // came in). Always an array, never undefined, so
-      // `event.messageReply.attachments[0]` no longer throws.
-      attachments: _getCachedAttachments(_rtId),
+      attachments: _replyAtts,
       isE2EE:    true
     };
   }
@@ -653,31 +690,78 @@ function createBridge(ctx) {
       var buf    = _normalizeMediaInput(data);
       var o      = opts || {};
       var ntype  = String(mediaType || "").toLowerCase();
+
+      // ── FIX: cache outgoing media so replies-to-bot-messages work ─────────
+      // When the bot sends a photo (e.g. !pp profile pic) it never receives
+      // its own message back through the e2eeMessage event, so the attachment
+      // cache stays empty for that message ID.  Anyone replying to the bot's
+      // photo then gets an empty attachments array, breaking !imgur, !4k, etc.
+      // Solution: store the raw buffer as a local HTTP URL BEFORE sending, then
+      // after the send returns a message ID, register it in _msgAttachCache so
+      // any future reply will find it instantly.
+      var _sentMime = ntype === "image" ? (o.mimeType || "image/jpeg")
+                    : ntype === "video" ? (o.mimeType || "video/mp4")
+                    : ntype === "sticker" ? (o.mimeType || "image/webp")
+                    : (o.mimeType || "application/octet-stream");
+      var _sentAttType = ntype === "image" ? "photo"
+                       : ntype === "video" ? "video"
+                       : ntype === "audio" || ntype === "voice" ? "audio"
+                       : "file";
+      var _sentLocalUrl = null;
+      try {
+        _sentLocalUrl = await storeMedia(buf, _sentMime);
+      } catch (_) { /* best-effort; send still proceeds */ }
+
+      var result;
       switch (ntype) {
         case "image":
-          return client.sendE2EEImage(jid, buf, o.mimeType || "image/jpeg",
+          result = await client.sendE2EEImage(jid, buf, o.mimeType || "image/jpeg",
             { caption: o.caption || "", width: o.width, height: o.height,
               replyToId: o.replyToId, replyToSenderJid: o.replyToSenderJid });
+          break;
         case "video":
-          return client.sendE2EEVideo(jid, buf, o.mimeType || "video/mp4",
+          result = await client.sendE2EEVideo(jid, buf, o.mimeType || "video/mp4",
             { caption: o.caption || "", duration: o.duration, width: o.width, height: o.height,
               replyToId: o.replyToId, replyToSenderJid: o.replyToSenderJid });
+          break;
         case "audio": case "voice": {
           var mime    = o.mimeType || "audio/ogg; codecs=opus";
           var isVoice = ntype === "voice" || !!o.ptt;
-          return client.sendE2EEAudio(jid, buf, mime,
+          result = await client.sendE2EEAudio(jid, buf, mime,
             { ptt: isVoice, duration: o.duration != null ? Number(o.duration) : undefined,
               replyToId: o.replyToId, replyToSenderJid: o.replyToSenderJid });
+          break;
         }
         case "file": case "document":
-          return client.sendE2EEDocument(jid, buf, o.filename || "file.bin",
+          result = await client.sendE2EEDocument(jid, buf, o.filename || "file.bin",
             o.mimeType || "application/octet-stream",
             { replyToId: o.replyToId, replyToSenderJid: o.replyToSenderJid });
+          break;
         case "sticker":
-          return client.sendE2EESticker(jid, buf, o.mimeType || "image/webp",
+          result = await client.sendE2EESticker(jid, buf, o.mimeType || "image/webp",
             { replyToId: o.replyToId, replyToSenderJid: o.replyToSenderJid });
+          break;
         default: throw new Error("Unsupported E2EE mediaType: " + ntype);
       }
+
+      // Cache the sent attachment under the returned message ID
+      if (_sentLocalUrl && result) {
+        var _sentId = result.id || result.messageId || result.messageID;
+        if (_sentId) {
+          _msgAttachCache.set(String(_sentId), {
+            attachments: [{
+              type    : _sentAttType,
+              url     : _sentLocalUrl,
+              mimeType: _sentMime,
+              filename: o.filename || undefined,
+              fileSize: buf.length != null ? String(buf.length) : undefined,
+              isE2EE  : true
+            }],
+            expiry: Date.now() + 30 * 60 * 1000
+          });
+        }
+      }
+      return result;
     }
   };
 
