@@ -10,7 +10,7 @@ module.exports = function ({ api, models }) {
   const config = require("./../config.json");
 
   // ── RX-FCA: E2EE Mentions Proxy ─────────────────────────────────────────────
-  const { patchE2EEMentions } = require("./e2eeMentionsProxy");
+  const { patchE2EEMentions } = require("../e2eeMentionsProxy");
   // ── RX-FCA: Thread Sync (on startup) ────────────────────────────────────────
   const handleThreadSync = require("./handle/handleThreadSync");
   // ── RX-FCA: Cookie Freshness Check ──────────────────────────────────────────
