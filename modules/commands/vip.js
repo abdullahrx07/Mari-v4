@@ -13,26 +13,6 @@ module.exports.config = {
 };
 
 module.exports.run = async function ({ api, event, args }) {
-    const vipFilePath = path.join(__dirname, "../../modules/commands/rx/vip.json");
-    const vipModePath = path.join(__dirname, "../../modules/commands/rx/vipMode.json");
-
-    // ===== Helpers =====
-    const loadVIP = () => {
-        if (!fs.existsSync(vipFilePath)) return [];
-        return JSON.parse(fs.readFileSync(vipFilePath, "utf-8"));
-    }
-
-    const saveVIP = (list) => fs.writeFileSync(vipFilePath, JSON.stringify(list, null, 2), "utf-8");
-
-    const loadVIPMode = () => {
-        if (!fs.existsSync(vipModePath)) return false;
-        const data = JSON.parse(fs.readFileSync(vipModePath, "utf-8"));
-        return data.vipMode || false;
-    }
-
-    const saveVIPMode = (mode) => fs.writeFileSync(vipModePath, JSON.stringify({ vipMode: mode }, null, 2), "utf-8");
-    // ===== End helpers =====
-
     const subCommand = args[0]?.toLowerCase();
 
     // Check for reply message if add/remove
@@ -41,30 +21,30 @@ module.exports.run = async function ({ api, event, args }) {
 
     if (!subCommand) return api.sendMessage("Usage: vip [on|off|add|remove|list] <userID or reply>", event.threadID);
 
-    let vipList = loadVIP();
-    let vipMode = loadVIPMode();
+    let vipList = await global.systemData.get("vip_list", []);
+    let vipMode = await global.systemData.get("vip_mode", false);
 
     switch(subCommand) {
         case "on":
-            saveVIPMode(true);
+            await global.systemData.set("vip_mode", true);
             return api.sendMessage("> 🎀\n𝐎𝐊 𝐎𝐧𝐥𝐲 𝐕𝐈𝐏 𝐮𝐬𝐞𝐫 𝐜𝐚𝐧 𝐮𝐬𝐞 𝐜𝐦𝐝𝐬", event.threadID);
 
         case "off":
-            saveVIPMode(false);
+            await global.systemData.set("vip_mode", false);
             return api.sendMessage("> 🎀\n𝐃𝐨𝐧𝐞 𝐚𝐥𝐥 𝐮𝐬𝐞𝐫 𝐜𝐚𝐧 𝐮𝐬𝐞 𝐜𝐦𝐝𝐬", event.threadID);
 
         case "add":
             if (!targetID) return api.sendMessage("> ❌\n𝐏𝐥𝐞𝐚𝐬𝐞 𝐩𝐫𝐨𝐯𝐢𝐝𝐞 𝐚 𝐮𝐬𝐞𝐫𝐈𝐃 𝐨𝐫 𝐫𝐞𝐩𝐥𝐲 𝐭𝐨 𝐚𝐝𝐝.", event.threadID);
             if (vipList.includes(targetID)) return api.sendMessage("> ❌\n𝐔𝐬𝐞𝐫 𝐢𝐬 𝐚𝐥𝐫𝐞𝐚𝐝𝐲 𝐕𝐈𝐏.", event.threadID);
             vipList.push(targetID);
-            saveVIP(vipList);
+            await global.systemData.set("vip_list", vipList);
             return api.sendMessage(`✅ Added ${targetID} to VIP list.`, event.threadID);
 
         case "remove":
-            if (!targetID) return api.sendMessage("> ❌\n𝐏𝐫𝐨𝐯𝐢𝐝𝐞 𝐚 𝐮𝐬𝐞𝐫𝐈𝐃 𝐨𝐫 𝐫𝐞𝐩𝐥𝐲 𝐭𝐨 𝐫𝐞𝐦𝐨𝐯𝐞.", event.threadID);
+            if (!targetID) return api.sendMessage("> ❌\n𝐏𝐥𝐞𝐚𝐬𝐞 𝐩𝐫𝐨𝐯𝐢𝐝𝐞 𝐚 𝐮𝐬𝐞𝐫𝐈𝐃 𝐨𝐫 𝐫𝐞𝐩𝐥𝐲 𝐭𝐨 𝐫𝐞𝐦𝐨𝐯𝐞.", event.threadID);
             if (!vipList.includes(targetID)) return api.sendMessage("> ❌\n 𝐔𝐬𝐞𝐫 𝐢𝐬 𝐧𝐨𝐭 𝐢𝐧 𝐕𝐈𝐏 𝐥𝐢𝐬𝐭.", event.threadID);
             vipList = vipList.filter(id => id !== targetID);
-            saveVIP(vipList);
+            await global.systemData.set("vip_list", vipList);
             return api.sendMessage(`✅ Removed ${targetID} from VIP list.`, event.threadID);
 
         case "list":

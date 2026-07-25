@@ -3,7 +3,7 @@ const path = require("path");
 
 module.exports.config = {
 	name: "setprefix",
-	version: "1.1.0",
+	version: "1.2.0",
 	hasPermssion: 0,
 	credits: "rX",
 	description: "Set group prefix or your own personal prefix",
@@ -31,27 +31,13 @@ module.exports.languages ={
 		"resetPrefix": "> 🎀\n 𝐏𝐫𝐞𝐟𝐢𝐱 𝐭𝐨: %1",
 		"confirmChange": "> 🎀\n𝐀𝐫𝐞 𝐲𝐨𝐮 𝐬𝐮𝐫𝐞 𝐭𝐡𝐚𝐭 𝐲𝐨𝐮 𝐰𝐚𝐧𝐭 𝐭𝐨 𝐜𝐡𝐚𝐧𝐠𝐞 𝐩𝐫𝐞𝐟𝐢𝐱 𝐢𝐧𝐭𝐨: %1",
 		"successChangeOwn": "> 🎀\n✅ 𝐘𝐨𝐮𝐫 𝐩𝐞𝐫𝐬𝐨𝐧𝐚𝐥 𝐩𝐫𝐞𝐟𝐢𝐱 𝐢𝐬 𝐧𝐨𝐰: %1\n╰────────────◊",
-		"missingInputOwn": "> 🎀\n𝐏𝐞𝐫𝐬𝐨𝐧𝐚𝐥 𝐩𝐫𝐞𝐟𝐢𝐱 𝐜𝐚𝐧𝐧𝐨𝐭 𝐛𝐞 𝐛𝐥𝐚𝐧𝐤",
+		"missingInputOwn": "> 🎀\n𝐏e𝐫𝐬𝐨𝐧𝐚𝐥 𝐩𝐫𝐞𝐟𝐢𝐱 𝐜𝐚𝐧𝐧𝐨𝐭 𝐛𝐞 𝐛𝐥𝐚𝐧𝐤",
 		"resetPrefixOwn": "> 🎀\n✅ 𝐘𝐨𝐮𝐫 𝐩𝐞𝐫𝐬𝐨𝐧𝐚𝐥 𝐩𝐫𝐞𝐟𝐢𝐱 𝐡𝐚𝐬 𝐛𝐞𝐞𝐧 𝐫𝐞𝐦𝐨𝐯𝐞𝐝",
 		"noOwnPrefix": "> 🎀\n❌ 𝐘𝐨𝐮 𝐝𝐨𝐧'𝐭 𝐡𝐚𝐯𝐞 𝐚 𝐩𝐞𝐫𝐬𝐨𝐧𝐚𝐥 𝐩𝐫𝐞𝐟𝐢𝐱 𝐬𝐞𝐭\n\n𝐃𝐡𝐚𝐧𝐬𝐲: 𝐬𝐞𝐭𝐩𝐫𝐞𝐟𝐢𝐱 𝐦𝐞 <𝐩𝐫𝐞𝐟𝐢𝐱>",
 		"viewOwnPrefix": "> 🎀\n🔑 𝐘𝐨𝐮𝐫 𝐩𝐞𝐫𝐬𝐨𝐧𝐚𝐥 𝐩𝐫𝐞𝐟𝐢𝐱: %1",
 		"prefixTooLong": "> 🎀\n❌ 𝐏𝐫𝐞𝐟𝐢𝐱 𝐦𝐮𝐬𝐭 𝐛𝐞 𝐦𝐚𝐱 5 𝐜𝐡𝐚𝐫𝐚𝐜𝐭𝐞𝐫𝐬"
 	}
 }
-
-// ===== OWN PREFIX STORAGE =====
-const userPrefixPath = path.join(__dirname, "rx", "userPrefix.json");
-
-const loadUserPrefix = () => {
-	if (!fs.existsSync(userPrefixPath)) {
-		fs.writeFileSync(userPrefixPath, JSON.stringify({}, null, 2));
-	}
-	return JSON.parse(fs.readFileSync(userPrefixPath, "utf-8"));
-};
-
-const saveUserPrefix = (data) => {
-	fs.writeFileSync(userPrefixPath, JSON.stringify(data, null, 2));
-};
 
 module.exports.handleReaction = async function({ api, event, Threads, handleReaction, getText }) {
 	try {
@@ -71,7 +57,7 @@ module.exports.run = async ({ api, event, args, Threads , getText }) => {
 	// ===== OWN PREFIX SYSTEM =====
 	if (args[0] && ["me", "own", "my"].includes(args[0].toLowerCase())) {
 		const senderID = String(event.senderID);
-		const data = loadUserPrefix();
+		const data = await global.systemData.get("user_prefixes", {});
 		const sub = args[1];
 
 		// 👁 View current personal prefix
@@ -88,7 +74,7 @@ module.exports.run = async ({ api, event, args, Threads , getText }) => {
 		if (sub.toLowerCase() === "reset") {
 			if (!data[senderID]) return api.sendMessage(getText("noOwnPrefix"), event.threadID, event.messageID);
 			delete data[senderID];
-			saveUserPrefix(data);
+			await global.systemData.set("user_prefixes", data);
 			return api.sendMessage(getText("resetPrefixOwn"), event.threadID, event.messageID);
 		}
 
@@ -98,11 +84,11 @@ module.exports.run = async ({ api, event, args, Threads , getText }) => {
 		if (newPrefix.length > 5) return api.sendMessage(getText("prefixTooLong"), event.threadID, event.messageID);
 
 		data[senderID] = newPrefix;
-		saveUserPrefix(data);
+		await global.systemData.set("user_prefixes", data);
 		return api.sendMessage(getText("successChangeOwn", newPrefix), event.threadID, event.messageID);
 	}
 
-	// ===== GROUP PREFIX (existing logic) =====
+	// ===== GROUP PREFIX =====
 	if (typeof args[0] == "undefined") return api.sendMessage(getText("missingInput"), event.threadID, event.messageID);
 	let prefix = args[0].trim();
 	if (!prefix) return api.sendMessage(getText("missingInput"), event.threadID, event.messageID);
