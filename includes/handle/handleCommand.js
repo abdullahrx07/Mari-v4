@@ -8,33 +8,10 @@ const axios = require("axios");
 
 module.exports = function ({ api, models, Users, Threads, Currencies }) {
 
-  const vipFilePath     = path.join(__dirname, "../../modules/commands/rx/vip.json");
-  const vipModePath     = path.join(__dirname, "../../modules/commands/rx/vipMode.json");
-  const userPrefixPath  = path.join(__dirname, "../../modules/commands/rx/userPrefix.json");
-
   // ===== WHITELIST PATHS =====
   const wltUserPath   = path.join(__dirname, "../../modules/commands/rx/wlt_users.json");
   const wltGroupPath  = path.join(__dirname, "../../modules/commands/rx/wlt_groups.json");
   const wltModePath   = path.join(__dirname, "../../modules/commands/rx/wlt_mode.json");
-
-  // ===== LOADERS =====
-  const loadVIP = () => {
-    if (!fs.existsSync(vipFilePath)) return [];
-    return JSON.parse(fs.readFileSync(vipFilePath, "utf-8"));
-  };
-
-  const loadVIPMode = () => {
-    if (!fs.existsSync(vipModePath)) return false;
-    const parsed = JSON.parse(fs.readFileSync(vipModePath, "utf-8"));
-    return parsed.vipMode || false;
-  };
-
-  const loadUserPrefix = () => {
-    if (!fs.existsSync(userPrefixPath)) {
-      fs.writeFileSync(userPrefixPath, JSON.stringify({}, null, 2));
-    }
-    return JSON.parse(fs.readFileSync(userPrefixPath, "utf-8"));
-  };
 
   // ===== WHITELIST LOADERS =====
   const loadWltUsers = () => {
@@ -120,7 +97,7 @@ module.exports = function ({ api, models, Users, Threads, Currencies }) {
     const escapeRegex   = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     // ===== OWN PREFIX CHECK =====
-    const userPrefixData = loadUserPrefix();
+    const userPrefixData = await global.systemData.get("user_prefixes", {});
     const userOwnPrefix  = userPrefixData[senderID] || null;
 
     // ─── Personal Prefix Fix ───
@@ -137,8 +114,8 @@ module.exports = function ({ api, models, Users, Threads, Currencies }) {
 
     const prefixUsed = body.startsWith(effectivePrefix);
 
-    const vipList = loadVIP();
-    const vipMode = loadVIPMode();
+    const vipList = await global.systemData.get("vip_list", []);
+    const vipMode = await global.systemData.get("vip_mode", false);
     const isVIP   = vipList.includes(senderID);
 
     // ===== LOAD PREMIUM USER =====
