@@ -265,9 +265,8 @@ module.exports = function ({ api, models }) {
     const isInboxDM = String(event.senderID) === String(event.threadID);
 
     if (!isE2EEThread && !isInboxDM && (event.body || '').startsWith(prefix) && event.senderID != api.getCurrentUserID()) {
-        let thuebot;
-        try { thuebot = JSON.parse(fs.readFileSync(process.cwd() + '/modules/commands/data/thuebot.json')); } catch { thuebot = []; }
-        let find_thuebot = thuebot.find($ => $.t_id == event.threadID);
+        const approvedThreads = await global.systemData.get("approved_threads", []);
+        const find_thuebot = approvedThreads.find($ => $.t_id == event.threadID);
         if (!find_thuebot && !global.config.ADMINBOT.includes(event.senderID)) {
             return api.sendMessage(`❎ Hi ${name}, this group has not rented the bot yet.`, event.threadID);
         }
