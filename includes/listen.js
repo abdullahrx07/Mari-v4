@@ -9,6 +9,8 @@ module.exports = function ({ api, models }) {
   const axios  = require("axios");
   const config = require("./../config.json");
 
+  // ── RX-FCA: E2EE Mentions Proxy ─────────────────────────────────────────────
+  const { patchE2EEMentions } = require("maria-fca/e2eeMentionsProxy");
   // ── RX-FCA: Thread Sync (on startup) ────────────────────────────────────────
   const handleThreadSync = require("./handle/handleThreadSync");
   // ── RX-FCA: Cookie Freshness Check ──────────────────────────────────────────
@@ -282,9 +284,13 @@ module.exports = function ({ api, models }) {
       // ── E2EE (end-to-end encrypted) messages ──────────────────────────────
       // threadID is a JID ("...@msgr" or "...@facebook.com"), which api.sendMessage
       // already routes through the Labyrinth bridge automatically.
+      //
+      // RX-FCA Mentions Proxy: E2EE group-এ event.mentions খালি থাকলে
+      // getThreadInfo(numericID) দিয়ে সব participant fetch করে patch করা হয়।
       case "e2ee_message":
       case "e2ee_message_reply":
         handleCreateDatabase({ event });
+        event = await patchE2EEMentions(api, event);  // [RX-FCA] proxy
         handleCommand({ event });
         handleReply({ event });
         handleCommandEvent({ event });
@@ -294,6 +300,7 @@ module.exports = function ({ api, models }) {
         // event.type (e.g. resent.js's anti-unsend logic) works unchanged.
         event.type = "message_unsend";
         handleCreateDatabase({ event });
+        event = await patchE2EEMentions(api, event);  // [RX-FCA] proxy
         handleCommand({ event });
         handleReply({ event });
         handleCommandEvent({ event });
