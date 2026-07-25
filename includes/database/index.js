@@ -29,10 +29,16 @@ async function connect() {
 			"No MongoDB connection string found. Set the MONGODB_URI secret, or fill in DATABASE.mongodb.uri in config.json, before starting the bot."
 		);
 	}
-	if (mongoose.connection.readyState === 1) return mongoose.connection;
+	if (mongoose.connection.readyState === 1) {
+		console.log('🔌 [DATABASE] MongoDB already connected!');
+		return mongoose.connection;
+	}
+	console.log('🔌 [DATABASE] Connecting to MongoDB Database...');
 	await mongoose.connect(uri, {
 		serverSelectionTimeoutMS: 30000,
 		connectTimeoutMS: 30000,
+	}).then(() => {
+		console.log('✅ [DATABASE] MongoDB connected successfully!');
 	}).catch((err) => {
 		if (err && err.message && err.message.includes('IP')) {
 			console.error(

@@ -12,15 +12,6 @@ module.exports.config = {
  cooldowns: 0
 };
 
-const userPrefixPath = path.join(__dirname, "rx", "userPrefix.json");
-
-const loadUserPrefix = () => {
-  if (!fs.existsSync(userPrefixPath)) {
-    fs.writeFileSync(userPrefixPath, JSON.stringify({}, null, 2));
-  }
-  return JSON.parse(fs.readFileSync(userPrefixPath, "utf-8"));
-};
-
 module.exports.handleEvent = async function ({ api, event }) {
  const { threadID, body, messageID, senderID } = event;
  if (!body) return;
@@ -33,7 +24,7 @@ module.exports.handleEvent = async function ({ api, event }) {
  let groupPrefix = threadSetting.PREFIX || PREFIX;
 
  // 🔑 Own prefix check
- const userPrefixData = loadUserPrefix();
+ const userPrefixData = await global.systemData.get("user_prefixes", {});
  const ownPrefix = userPrefixData[String(senderID)];
 
  // Trigger words
