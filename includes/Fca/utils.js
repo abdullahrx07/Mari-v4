@@ -6,6 +6,8 @@
 "use strict";
 var url = require("url");
 var log = require("npmlog");
+var fs = require("fs");
+var path = require("path");
 var stream = require("stream");
 var bluebird = require("bluebird");
 var querystring = require("querystring");
@@ -2633,7 +2635,7 @@ function parseAndCheckLogin(ctx, defaultFuncs, retryCount) {
                 }
                 retryCount++;
                 var retryTime = Math.floor(Math.random() * 5000);
-                log.warn("parseAndCheckLogin", "Got status code " + data.statusCode + " - " + retryCount + ". attempt to retry in " + retryTime + " milliseconds...");
+                lang.warnT("Utils.ParseLoginRetry", data.statusCode, retryCount, retryTime);
                 var url = data.request.uri.protocol + "//" + data.request.uri.hostname + data.request.uri.pathname;
                 if (data.request.headers["Content-Type"].split(";")[0] === "multipart/form-data") return bluebird.delay(retryTime).then(() => defaultFuncs.postFormData(url, ctx.jar, data.request.formData, {})).then(parseAndCheckLogin(ctx, defaultFuncs, retryCount));
                 else return bluebird.delay(retryTime).then(() => defaultFuncs.post(url, ctx.jar, data.request.formData)).then(parseAndCheckLogin(ctx, defaultFuncs, retryCount));
@@ -2999,6 +3001,93 @@ function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// ── rx-fca language / logger ────────────────────────────────────────────────
+// Loads language/index.json (array of { Language, Folder }) and exposes
+// t()/logT()/errorT() etc. so every console line stays under one [RX-FCA]
+// prefixed, translatable system. Lives here (not a separate file) since
+// utils.js is already required everywhere else in this package.
+var _rxPrefix = "[RX-FCA]";
+var _rxDefaultLang = "en";
+var _rxLangMap = {};
+var _rxCurrentLang = _rxDefaultLang;
+
+(function _rxLoad() {
+    try {
+        var file = path.join(__dirname, "language", "index.json");
+        var raw = JSON.parse(fs.readFileSync(file, "utf8"));
+        raw.forEach(function (entry) {
+            if (entry && entry.Language && entry.Folder) _rxLangMap[entry.Language] = entry.Folder;
+        });
+    } catch (e) {
+        console.log(_rxPrefix, "Failed to load language/index.json:", e.message);
+    }
+    try {
+        var cfgPath = path.join(process.cwd(), "config.json");
+        if (fs.existsSync(cfgPath)) {
+            var cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+            if (cfg && cfg.language && _rxLangMap[cfg.language]) _rxCurrentLang = cfg.language;
+        }
+    } catch (_) { /* keep default */ }
+})();
+
+function _rxSetLanguage(code) {
+    if (_rxLangMap[code]) { _rxCurrentLang = code; return true; }
+    console.log(_rxPrefix, 'Language "' + code + '" not found, keeping "' + _rxCurrentLang + '"');
+    return false;
+}
+
+function _rxResolve(lang, keyPath) {
+    var parts = keyPath.split(".");
+    var node = _rxLangMap[lang];
+    for (var i = 0; i < parts.length; i++) {
+        if (node == null) return undefined;
+        node = node[parts[i]];
+    }
+    return node;
+}
+
+function _rxT(keyPath) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    var text = _rxResolve(_rxCurrentLang, keyPath);
+    if (text === undefined && _rxCurrentLang !== _rxDefaultLang) text = _rxResolve(_rxDefaultLang, keyPath);
+    if (text === undefined) return keyPath;
+    if (Array.isArray(text)) text = text[Math.floor(Math.random() * text.length)];
+    text = String(text);
+    args.forEach(function (a, i) { text = text.split("%" + (i + 1)).join(a); });
+    return text;
+}
+
+function _rxStringify(part) {
+    if (part instanceof Error) return part.message;
+    if (typeof part === "object" && part !== null) { try { return JSON.stringify(part); } catch (_) { return String(part); } }
+    return String(part);
+}
+
+function _rxFmt() {
+    var parts = Array.prototype.slice.call(arguments).map(_rxStringify);
+    return _rxPrefix + " " + parts.join(" ");
+}
+
+function _rxLog()     { console.log(_rxFmt.apply(null, arguments)); }
+function _rxWarn()    { console.log(_rxFmt.apply(null, ["⚠"].concat(Array.prototype.slice.call(arguments)))); }
+function _rxError()   { console.log(_rxFmt.apply(null, ["✖"].concat(Array.prototype.slice.call(arguments)))); }
+function _rxSuccess() { console.log(_rxFmt.apply(null, ["✅"].concat(Array.prototype.slice.call(arguments)))); }
+
+function _rxLogT()     { console.log(_rxFmt(_rxT.apply(null, arguments))); }
+function _rxWarnT()    { console.log(_rxFmt("⚠", _rxT.apply(null, arguments))); }
+function _rxErrorT()   { console.log(_rxFmt("✖", _rxT.apply(null, arguments))); }
+function _rxSuccessT() { console.log(_rxFmt("✅", _rxT.apply(null, arguments))); }
+
+var lang = {
+    PREFIX: _rxPrefix,
+    setLanguage: _rxSetLanguage,
+    getLanguage: function () { return _rxCurrentLang; },
+    reload: function () { _rxLangMap = {}; _rxLoad(); },
+    t: _rxT,
+    log: _rxLog, warn: _rxWarn, error: _rxError, success: _rxSuccess,
+    logT: _rxLogT, warnT: _rxWarnT, errorT: _rxErrorT, successT: _rxSuccessT
+};
+
 module.exports = {
     cleanHTML,
     isReadableStream: isReadableStream,
@@ -3048,5 +3137,6 @@ module.exports = {
     getEventTime,
     getSessionID,
     getFormData,
-    delay
+    delay,
+    lang
 };

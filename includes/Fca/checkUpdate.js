@@ -2,6 +2,7 @@ const axios = require('axios');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const rx = require('./utils').lang;
 
 var PACKAGE_NAME = 'xdi-fca';
 
@@ -28,6 +29,7 @@ function getCurrentVersion() {
 }
 
 async function checkForFCAUpdate() {
+    rx.logT("Index.AutoCheckUpdate");
     try {
         const { data: npmData } = await axios.get(
             'https://registry.npmjs.org/xdi-fca/latest'
@@ -39,18 +41,18 @@ async function checkForFCAUpdate() {
         if (latestVersion !== currentVersion) {
             const isNewer = compareVersions(latestVersion, currentVersion) > 0;
             if (!isNewer) {
-                console.log('\x1b[32m%s\x1b[0m', `✅ FCA is up to date (v${currentVersion})`);
+                rx.successT("Index.LocalVersion", currentVersion);
                 return false;
             }
 
-            console.log('\x1b[32m%s\x1b[0m', `✨ New FCA version available: ${latestVersion} (current: ${currentVersion})`);
-            console.log('\x1b[33m%s\x1b[0m', '📦 Updating FCA package...');
+            rx.successT("Index.NewVersionFound", latestVersion, currentVersion);
+            rx.logT("Index.AutoUpdate");
 
             try {
                 const { data: changesData } = await axios.get(
                     'https://raw.githubusercontent.com/Amibu-FCA/fca-unofficial/main/CHANGELOG.md'
                 );
-                console.log('\x1b[36m%s\x1b[0m', '📋 Recent Changes:');
+                rx.log('Recent Changes:');
                 const latestChanges = changesData.split('##')[1]?.split('\n').slice(0, 5).join('\n');
                 if (latestChanges) console.log(latestChanges);
             } catch (_) { }
@@ -58,17 +60,18 @@ async function checkForFCAUpdate() {
             await updateNpmPackage(latestVersion);
             await updateUserPackageJson(latestVersion);
 
-            console.log('\x1b[32m%s\x1b[0m', '✅ FCA updated successfully!');
-            console.log('\x1b[33m%s\x1b[0m', '🔄 Restarting to apply changes...');
+            rx.successT("Index.UpdateSuccess");
+            rx.logT("Index.RestartAfterUpdate");
 
             setTimeout(() => { process.exit(2); }, 1000);
             return true;
         } else {
-            console.log('\x1b[32m%s\x1b[0m', `✅ FCA is up to date (v${currentVersion})`);
+            rx.successT("Index.LocalVersion", currentVersion);
             return false;
         }
     } catch (error) {
-        console.log('\x1b[31m%s\x1b[0m', '❌ Failed to check for FCA updates:', error.message);
+        rx.errorT("Index.UpdateFailed");
+        rx.error('Details:', error.message);
         return false;
     }
 }
@@ -86,12 +89,13 @@ function compareVersions(a, b) {
 
 async function updateNpmPackage(version) {
     try {
-        console.log('\x1b[36m%s\x1b[0m', `📦 Running npm install ${PACKAGE_NAME}@${version}...`);
+        rx.logT("Index.Rebuilding");
         execSync(`npm install ${PACKAGE_NAME}@${version} --save`, { cwd: process.cwd(), stdio: 'inherit' });
-        console.log('\x1b[32m%s\x1b[0m', '✅ Package installed successfully!');
+        rx.successT("Index.SuccessRebuilding");
         return true;
     } catch (error) {
-        console.log('\x1b[31m%s\x1b[0m', '❌ Failed to install package:', error.message);
+        rx.errorT("Index.ErrRebuilding");
+        rx.error('Details:', error.message);
         throw error;
     }
 }
@@ -104,11 +108,11 @@ async function updateUserPackageJson(version) {
         if (packageJson.dependencies && packageJson.dependencies[PACKAGE_NAME]) {
             packageJson.dependencies[PACKAGE_NAME] = `^${version}`;
             fs.writeFileSync(userPackageJsonPath, JSON.stringify(packageJson, null, 2));
-            console.log('\x1b[32m%s\x1b[0m', `✅ Updated package.json to ${PACKAGE_NAME}@${version}`);
+            rx.success(`Updated package.json to ${PACKAGE_NAME}@${version}`);
         }
         return true;
     } catch (error) {
-        console.log('\x1b[31m%s\x1b[0m', '⚠️  Failed to update user package.json:', error.message);
+        rx.warn('Failed to update user package.json:', error.message);
         return false;
     }
 }

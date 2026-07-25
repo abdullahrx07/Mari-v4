@@ -4,6 +4,7 @@ var utils = require("./utils");
 var cheerio = require("cheerio");
 var log = require("npmlog");
 var { checkForFCAUpdate } = require("./checkUpdate");
+var rx = utils.lang;
 const fs = require('fs');
 const path = require('path');
 const request = require('request');
@@ -58,7 +59,7 @@ function setOptions(globalOptions, options) {
                         break;
                     }
                     default: {
-                        log.warn("setOptions", "Unrecognized option given to setOptions: " + key);
+                        rx.warn("setOptions", "Unrecognized option given to setOptions: " + key);
                         break;
                     }
                 }
@@ -118,10 +119,10 @@ function buildAPI(globalOptions, html, jar) {
                 }
             } catch { }
             if (fb_dtsg) {
-                console.log("Found fb_dtsg!");
+                rx.log("Found fb_dtsg!");
             }
         } catch (e) {
-            console.log("Error finding fb_dtsg:", e);
+            rx.error("Error finding fb_dtsg:", e.message);
         }
     }
     extractFromHTML();
@@ -130,12 +131,13 @@ function buildAPI(globalOptions, html, jar) {
     var userCookie = cookies.find(cookie => cookie.cookieString().startsWith("c_user="));
     var tiktikCookie = cookies.find(cookie => cookie.cookieString().startsWith("i_user="));
     if (!userCookie && !tiktikCookie) {
-        return log.error("Error! Your cookiestate is not valid!");
+        return rx.errorT("Index.ErrAppState");
     }
     if (html.includes("/checkpoint/block/?next")) {
-        return log.error('error', "Appstate is dead rechange it!", 'error');
+        return rx.errorT("Index.InvaildAppState");
     }
     userID = (tiktikCookie || userCookie).cookieString().split("=")[1];
+    rx.logT("Index.UID", userID);
     //logger.log(`${cra(`[ CONNECT ]`)} Logged in as ${userID}`, "DATABASE");
     try { clearInterval(checkVerified); } catch (_) { }
     const clientID = (Math.random() * 2147483648 | 0).toString(16);
@@ -145,7 +147,7 @@ function buildAPI(globalOptions, html, jar) {
     try {
         const endpointMatch = html.match(/"endpoint":"([^"]+)"/);
         if (endpointMatch && endpointMatch.input && endpointMatch.input.includes("601051028565049")) {
-          console.log(`login error.`);
+          rx.warnT("Index.CheckPointLevelI");
           ditconmemay = true;
         }
         if (endpointMatch) {
@@ -163,9 +165,9 @@ function buildAPI(globalOptions, html, jar) {
             }
         }
     } catch (e) {
-        console.log('Using default MQTT endpoint');
+        rx.log('Using default MQTT endpoint');
     }
-    log.info('Logging in...');
+    rx.logT("Index.OnProcess");
     var ctx = {
         userID: userID,
         jar: jar,
@@ -214,7 +216,7 @@ function buildAPI(globalOptions, html, jar) {
             if (typeof global.GoatBot.config.typingDuration !== 'undefined') config.typingDuration = global.GoatBot.config.typingDuration;
         }
     } catch (e) {
-        console.log('Error loading config.json:', e);
+        rx.error('Error loading config.json:', e.message);
     }
 
     const refreshFcaConfig = () => {
@@ -254,7 +256,7 @@ function buildAPI(globalOptions, html, jar) {
                 global.GoatBot.config.typingDuration = updatedConfig.typingDuration;
             }
         } catch (e) {
-            console.log('Failed to refresh fca config:', e);
+            rx.error('Failed to refresh fca config:', e.message);
         }
     };
 
@@ -415,7 +417,7 @@ function buildAPI(globalOptions, html, jar) {
 
             return newDtsg;
         } catch (e) {
-            console.log("Error getting fresh dtsg:", e);
+            rx.error("Error getting fresh dtsg:", e.message);
             return null;
         }
     };
@@ -431,7 +433,7 @@ function buildAPI(globalOptions, html, jar) {
             return await originalSendMessage(msg, threadID, callback, replyToMessage, isSingleUser);
         } catch (error) {
             // If modern method fails, fallback to OldMessage
-            console.log('sendMessage failed, using OldMessage fallback:', error.message);
+            rx.warn('sendMessage failed, using OldMessage fallback:', error.message);
             return api.OldMessage(msg, threadID, callback, replyToMessage, isSingleUser);
         }
     };
@@ -483,7 +485,7 @@ function buildAPI(globalOptions, html, jar) {
                 return promise;
             };
         } catch (_patchErr) {
-            log.warn('E2EE', 'Failed to initialise E2EE:', _patchErr && _patchErr.message ? _patchErr.message : _patchErr);
+            rx.errorT("E2EE.InitFailed", _patchErr && _patchErr.message ? _patchErr.message : String(_patchErr));
         }
     }
 
@@ -517,7 +519,7 @@ function makeLogin(jar, email, password, loginOptions, callback, prCallback) {
                 const cookieData = JSON.parse("[\"" + utils.getFrom(val, "", "]") + "]");
                 jar.setCookie(utils.formatCookie(cookieData, "facebook"), "https://www.facebook.com");
             });
-            log.info("Logging in...");
+            rx.logT("Index.OnProcess");
             const loginRes = await utils.post(
                 "https://www.facebook.com/login/device-based/regular/login/?login_attempt=1&lwv=110",
                 jar,
@@ -528,7 +530,7 @@ function makeLogin(jar, email, password, loginOptions, callback, prCallback) {
             const headers = loginRes.headers;
             if (!headers.location) throw new Error("Wrong username/password.");
             if (headers.location.includes('https://www.facebook.com/checkpoint/')) {
-                log.info("login", "You have login approvals turned on.");
+                rx.logT("Index.TwoAuth");
                 const checkpointRes = await utils.get(headers.location, jar, null, loginOptions);
                 await utils.saveCookies(jar)(checkpointRes);
                 const checkpointHtml = checkpointRes.body;
@@ -683,7 +685,7 @@ function loginHelper(appState, email, password, globalOptions, callback, prCallb
             var line = C.dim + '─'.repeat(46) + C.reset;
             console.log('\n' + line);
             console.log(
-                C.bold + C.bgMagenta + C.white + ' 🤖 rx-fca ' + C.reset + '  ' +
+                C.bold + C.bgMagenta + C.white + ' ' + rx.PREFIX + ' ' + C.reset + '  ' +
                 C.bold + C.bWhite + 'Facebook Chat API' + C.reset +
                 C.dim + '  v' + pkgVersion + C.reset
             );
@@ -693,7 +695,7 @@ function loginHelper(appState, email, password, globalOptions, callback, prCallb
             );
             console.log(line);
             console.log(
-                '   ' + C.bGreen + '✅  Login successful' + C.reset +
+                '   ' + C.bGreen + '✅  ' + rx.t("Index.DoneLogin") + C.reset +
                 C.dim + '  │  ' + C.reset +
                 C.bMagenta + 'uid: ' + C.reset + C.bYellow + (ctx && ctx.userID ? ctx.userID : 'N/A') + C.reset
             );

@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const fca = require('./index');
+const rx = require('./utils').lang;
 
 const PREFIX = '!';
 const THREAD_ID = ""; //your group/thread tid id add 
@@ -209,13 +210,13 @@ async function runTests(api, threadID) {
         process.stdout.write(`  [TEST ${step.label}]... `);
         try {
             const r = await step.run();
-            console.log('✅ OK', typeof r === 'object' ? JSON.stringify(r).slice(0, 80) : '');
+            rx.successT("Bot.TestOK", typeof r === 'object' ? JSON.stringify(r).slice(0, 80) : step.label);
         } catch (e) {
-            console.log('❌ FAILED:', e && e.message || String(e));
+            rx.errorT("Bot.TestFailed", (e && e.message) || String(e));
         }
         await sleep(1200);
     }
-    console.log('\n[ALL TESTS DONE]\n');
+    rx.logT("Bot.TestsDone");
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -224,7 +225,7 @@ async function main() {
     try {
         appState = JSON.parse(fs.readFileSync(COOKIE_FILE, 'utf8'));
     } catch (e) {
-        console.error('[BOT] Failed to read cookie.txt:', e.message);
+        rx.errorT("Bot.CookieReadFail", e.message);
         process.exit(1);
     }
 
@@ -236,23 +237,23 @@ async function main() {
         autoReconnect: true
     }, async (err, api) => {
         if (err) {
-            console.error('[BOT] Login failed:', err.message || err);
+            rx.errorT("Bot.LoginFailed", (err && err.message) || String(err));
             return process.exit(1);
         }
 
-        console.log(`[BOT] ✅ Logged in! UID: ${api.getCurrentUserID()}`);
-        console.log(`[BOT] Prefix: "${PREFIX}" | Thread: ${THREAD_ID}`);
-        console.log(`[BOT] Send "${PREFIX}help" to see all commands.\n`);
+        rx.successT("Bot.LoggedIn", api.getCurrentUserID());
+        rx.logT("Bot.PrefixInfo", PREFIX, THREAD_ID);
+        rx.logT("Bot.HelpHint", PREFIX);
 
         api.listen((err, event) => {
-            if (err) return console.error('[BOT] Listen error:', err.message || err);
+            if (err) return rx.errorT("Bot.ListenError", (err && err.message) || String(err));
             if (!event) return;
 
             const type = event.type;
 
             // Log incoming messages
             if (type === 'message' || type === 'message_reply') {
-                console.log(`[MSG] [${event.threadID}] ${event.senderID}: ${event.body || '(attachment)'}`);
+                rx.logT("Bot.MsgIncoming", event.threadID, event.senderID, event.body || '(attachment)');
 
                 const body = (event.body || '').trim();
                 if (!body.startsWith(PREFIX)) return;
@@ -263,25 +264,26 @@ async function main() {
                 const cmd = commands[cmdName];
 
                 if (!cmd) {
+                    rx.warnT("Bot.UnknownCommand", PREFIX + cmdName);
                     send(api, event.threadID, `❓ Unknown command: ${PREFIX}${cmdName}\nType ${PREFIX}help for list.`).catch(() => {});
                     return;
                 }
 
                 cmd.run(api, event, args).catch(e => {
-                    console.error(`[CMD ERROR] ${cmdName}:`, e && e.message || e);
+                    rx.errorT("Bot.CmdError", cmdName, (e && e.message) || e);
                     send(api, event.threadID, `❌ Error in ${PREFIX}${cmdName}: ${e && e.message || String(e)}`).catch(() => {});
                 });
 
             } else if (type === 'typ') {
                 // Silently log typing
             } else if (type === 'message_reaction') {
-                console.log(`[REACT] ${event.senderID} → ${event.reaction} on ${event.messageID}`);
+                rx.logT("Bot.ReactIncoming", event.senderID, event.reaction, event.messageID);
             }
         });
     });
 }
 
 main().catch(e => {
-    console.error('[BOT] Fatal:', e.message || e);
+    rx.errorT("Bot.Fatal", (e && e.message) || e);
     process.exit(1);
 });

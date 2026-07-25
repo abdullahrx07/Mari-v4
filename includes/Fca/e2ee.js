@@ -1,6 +1,7 @@
 "use strict";
 
 var log    = require("npmlog");
+var rx     = require("./utils").lang;
 var path   = require("path");
 var urlMod = require("url");
 var http   = require("http");
@@ -383,8 +384,10 @@ function createBridge(ctx) {
   };
 
   function _ensureEnabled() {
-    if (ctx.globalOptions.enableE2EE === false)
+    if (ctx.globalOptions.enableE2EE === false) {
+      rx.errorT("E2EE.Disabled");
       throw new Error("E2EE is disabled. Set enableE2EE:true in config.");
+    }
   }
 
   async function _loadClient() {
@@ -487,7 +490,7 @@ function createBridge(ctx) {
             });
           }
         } catch (e) {
-          log.warn("e2ee", "batch resolveAttachments failed:", e && e.message ? e.message : String(e));
+          rx.warnT("E2EE.AttachResolveFailed", e && e.message ? e.message : String(e));
         }
       }
 
@@ -500,17 +503,18 @@ function createBridge(ctx) {
     state.client.on("error", function (err) {
       var msg = err && err.message ? err.message : String(err || "");
       if (/close 1006|unexpected EOF|ECONNRESET|ETIMEDOUT|read loop/i.test(msg)) {
-        log.warn("e2ee", "Transient network error — will reconnect:", msg); return;
+        rx.warnT("E2EE.TransientError", msg); return;
       }
       _callUserCallback(state.lastGlobalCallback, err || new Error("Unknown E2EE error"));
     });
     state.client.on("disconnected", function (info) {
       state.connected = false; state.fullyReady = false;
-      log.warn("e2ee", "E2EE disconnected — reconnecting in 5s");
+      rx.warnT("E2EE.Disconnected");
       setTimeout(function () {
         if (!state.connectingPromise) {
           var cb = (ctx && ctx._globalCallback) || state.lastGlobalCallback;
-          connect(cb).catch(function (e) { log.error("e2ee", "Reconnect failed:", e && e.message ? e.message : e); });
+          rx.logT("E2EE.Reconnecting");
+          connect(cb).catch(function (e) { rx.errorT("E2EE.ReconnectFailed", e && e.message ? e.message : String(e)); });
         }
       }, 5000);
       _callUserCallback(state.lastGlobalCallback, null, { type: "e2ee_disconnected", isE2EE: true, data: info || null });
@@ -523,12 +527,15 @@ function createBridge(ctx) {
     if (state.connected && state.client) return state.client;
     if (state.connectingPromise) return state.connectingPromise;
 
+    rx.logT("E2EE.Connecting");
     state.connectingPromise = (async function () {
       var Client = await _loadClient();
       if (!state.client) {
         var cookies = _cookiesFromJar(ctx);
-        if (!cookies.c_user || !cookies.xs)
+        if (!cookies.c_user || !cookies.xs) {
+          rx.errorT("E2EE.MissingCookies");
           throw new Error("Cannot start E2EE: c_user/xs cookies missing");
+        }
 
         var opts = {
           enableE2EE: true,
@@ -547,10 +554,12 @@ function createBridge(ctx) {
       }
       await state.client.connect();
       state.connected = true; state.fullyReady = false;
+      rx.successT("E2EE.Connected");
       return state.client;
     })();
 
     try   { return await state.connectingPromise; }
+    catch (e) { rx.errorT("E2EE.ConnectFailed", e && e.message ? e.message : String(e)); throw e; }
     finally { state.connectingPromise = null; }
   }
 
