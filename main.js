@@ -22,7 +22,7 @@ const con = require('./config.json');
 // includes/Fca/src from the live API surface. See replit.md for details.
 let login = null;
 try {
-	login = require('./includes/Fca');
+	login = require('maria-fca');
 } catch (e) {
 	logger('Failed to load ./includes/Fca — Facebook login is disabled: ' + e.message, '[ LOGIN-DISABLED ]');
 }
