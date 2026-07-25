@@ -1,7 +1,7 @@
 module.exports.config = {
 	name: "pending",
-	version: "1.0.5",
-	credits: "𝐏𝐫𝐢𝐲𝐚𝐧𝐬𝐡 𝐑𝐚𝐣𝐩𝐮𝐭",
+	version: "1.0.6",
+	credits: "rX",
 	hasPermssion: 2,
 	description: "Manage bot's waiting messages",
 	commandCategory: "system",
@@ -9,16 +9,6 @@ module.exports.config = {
 };
 
 module.exports.languages = {
-    "vi": {
-        "invaildNumber": "%1 không phải là một con số hợp lệ",
-        "cancelSuccess": "Đã từ chối thành công %1 nhóm!",
-        "notiBox": "Box của bạn đã được admin phê duyệt để có thể sử dụng bot",
-        "approveSuccess": "Đã phê duyệt thành công %1 nhóm!",
-
-        "cantGetPendingList": "Không thể lấy danh sách các nhóm đang chờ!",
-        "returnListPending": "「PENDING」❮ Tổng số nhóm cần duyệt: %1 nhóm ❯\n\n%2",
-        "returnListClean": "「PENDING」Hiện tại không có nhóm nào trong hàng chờ"
-    },
     "en": {
         "invaildNumber": "%1 is not an invalid number",
         "cancelSuccess": "Refused %1 thread!",
@@ -29,6 +19,34 @@ module.exports.languages = {
         "returnListPending": "»「PENDING」«❮ The whole number of threads to approve is: %1 thread ❯\n\n%2",
         "returnListClean": "「PENDING」There is no thread in the pending list"
     }
+}
+
+// ===== Approve helpers (shared logic with the approve command) =====
+const formatDate = (d) =>
+    `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+
+// Adds a thread into the approved_threads store (7 day default duration),
+// skipping it if it's already approved. Returns true if newly approved.
+async function addToApprovedList(targetThreadID) {
+    let data = await global.systemData.get("approved_threads", []);
+
+    if (data.find((e) => String(e.t_id) === String(targetThreadID))) {
+        return false; // already approved, don't duplicate
+    }
+
+    const start = new Date();
+    const end = new Date();
+    end.setDate(end.getDate() + 7); // default duration: 7 days
+
+    data.push({
+        t_id: targetThreadID,
+        user: "Everyone",
+        time_start: formatDate(start),
+        time_end: formatDate(end),
+    });
+
+    await global.systemData.set("approved_threads", data);
+    return true;
 }
 
 module.exports.handleReply = async function({ api, event, handleReply, getText }) {
@@ -50,7 +68,9 @@ module.exports.handleReply = async function({ api, event, handleReply, getText }
         const index = body.split(/\s+/);
         for (const singleIndex of index) {
             if (isNaN(singleIndex) || singleIndex <= 0 || singleIndex > handleReply.pending.length) return api.sendMessage(getText("invaildNumber", singleIndex), threadID, messageID);
-            api.sendMessage(getText("notiBox"), handleReply.pending[singleIndex - 1].threadID);
+            const targetThreadID = handleReply.pending[singleIndex - 1].threadID;
+            await addToApprovedList(targetThreadID);
+            api.sendMessage(getText("notiBox"), targetThreadID);
             count+=1;
         }
         return api.sendMessage(getText("approveSuccess", count), threadID, messageID);
