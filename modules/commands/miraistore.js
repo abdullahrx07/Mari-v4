@@ -3,11 +3,33 @@ const path = require("path");
 const axios = require("axios");
 
 const API_BASE = "https://mirai-store.vercel.app";
+const PASTE_API_BASE = "https://pastebin-raw.vercel.app";
 const userSeenNoti = new Map();
 
 function isBotAdmin(senderID) {
-  const adminList = (global.config && global.config.adminBot) || [];
-  return adminList.includes(String(senderID));
+  const adminList = (global.config && (global.config.ADMINBOT || global.config.adminBot)) || [];
+  return adminList.map(String).includes(String(senderID));
+}
+
+async function pasteCode(content) {
+  const res = await axios.post(`${PASTE_API_BASE}/api/paste`, { code: content });
+  if (!res.data?.id) throw new Error("Paste API theke id pawa jayni.");
+  const rawUrl = res.data.url || `${PASTE_API_BASE}/raw/${res.data.id}`;
+  if (!rawUrl || typeof rawUrl !== "string" || !rawUrl.trim()) {
+    throw new Error("Paste API theke valid rawUrl toiri kora gelo na.");
+  }
+  return { id: res.data.id, rawUrl };
+}
+
+async function deletePaste(pasteId) {
+  if (!pasteId) return false;
+  try {
+    await axios.delete(`${PASTE_API_BASE}/api/paste`, { data: { id: pasteId } });
+    return true;
+  } catch (err) {
+    console.error(`[miraistore] Orphan paste delete failed for ${pasteId}:`, err.response?.data?.error || err.message);
+    return false;
+  }
 }
 
 let _updateCheckCache = null;
@@ -60,8 +82,8 @@ module.exports.config = {
   name: "miraistore",
   aliases: ["ms", "shop"],
   premium: true,
-  version: "3.1.0",
-  hasPermission: 1,
+  version: "3.2.0",
+  hasPermssion: 1,
   credits: "rX",
   description: "Mirai Command Store (Search, Like, Upload, Install, Delete, Trending, List)",
   commandCategory: "system",
@@ -401,21 +423,31 @@ async function uploadCommandFile(fileName, filePath, kind = "command") {
 
   const framework = detectFrameworkLocal(data);
 
-  let rawUrl;
+  let rawUrl, pasteId;
   try {
-    const pasteRes = await axios.post("https://pastebin-api.vercel.app/paste", { text: data });
-    if (!pasteRes.data?.id)
-      return { ok: false, file: fileName, reason: "No paste ID returned." };
-    rawUrl = `https://pastebin-api.vercel.app/raw/${pasteRes.data.id}`;
+    const result = await pasteCode(data);
+    rawUrl = result.rawUrl;
+    pasteId = result.id;
   } catch (err) {
-    return { ok: false, file: fileName, reason: `Paste failed: ${err.message}` };
+    return { ok: false, file: fileName, reason: `Paste failed: ${err.response?.data?.error || err.message}` };
   }
 
   try {
-    const res = await axios.post(`${API_BASE}/miraistore/upload`, { rawUrl, framework, kind });
-    if (res.data?.error) return { ok: false, file: fileName, reason: res.data.error };
+    const res = await axios.post(`${API_BASE}/miraistore/upload`, { rawUrl, rawCode: data, framework, kind });
+
+    if (res.data?.error === "Already exists" || res.data?.error === "Not allowed") {
+      await deletePaste(pasteId);
+      return { ok: false, file: fileName, reason: res.data.error, skippedAsDuplicate: true };
+    }
+
+    if (res.data?.error) {
+      await deletePaste(pasteId);
+      return { ok: false, file: fileName, reason: res.data.error };
+    }
+
     return { ok: true, file: fileName, id: res.data.id, name: res.data.name, type: res.data.type, rawUrl };
   } catch (err) {
+    await deletePaste(pasteId);
     return { ok: false, file: fileName, reason: err.message };
   }
 }
@@ -447,8 +479,15 @@ async function runAutoSync({ silent = true, notifyApi = null, notifyThreadID = n
       if (cache[cacheKey] === hash) { result.skipped.push(cacheKey); continue; }
 
       const up = await uploadCommandFile(cacheKey, fullPath, kind);
-      if (up.ok) { cache[cacheKey] = hash; result.uploaded.push(up); }
-      else { result.failed.push(up); }
+      if (up.ok) {
+        cache[cacheKey] = hash;
+        result.uploaded.push(up);
+      } else if (up.skippedAsDuplicate) {
+        cache[cacheKey] = hash;
+        result.skipped.push(cacheKey);
+      } else {
+        result.failed.push(up);
+      }
 
       await new Promise(r => setTimeout(r, 500));
     }
@@ -460,7 +499,7 @@ async function runAutoSync({ silent = true, notifyApi = null, notifyThreadID = n
     const msg =
       `🔄 Autosync complete\n` +
       `✅ Uploaded : ${result.uploaded.length}\n` +
-      `⏭️ Skipped (unchanged) : ${result.skipped.length}\n` +
+      `⏭️ Skipped (unchanged/duplicate) : ${result.skipped.length}\n` +
       `❌ Failed : ${result.failed.length}` +
       (result.failed.length ? `\n\nFailed files:\n${result.failed.map(f => `• ${f.file} — ${f.reason}`).join("\n")}` : "");
     notifyApi.sendMessage(msg, notifyThreadID);
@@ -673,7 +712,8 @@ module.exports.run = async function ({ api, event, args }) {
   }
 
   if (sub === "sync") {
-    if (module.exports.config.hasPermission > 0 && !isBotAdmin(senderID))
+    const hasPermissionVal = typeof module.exports.config.hasPermssion !== "undefined" ? module.exports.config.hasPermssion : module.exports.config.hasPermission;
+    if (hasPermissionVal > 0 && !isBotAdmin(senderID))
       return api.sendMessage("❌ You are not allowed to run sync.", threadID);
     api.sendMessage("🔄 Syncing all commands to MiraiStore... background e cholbe.", threadID);
     runAutoSync({ silent: false, notifyApi: api, notifyThreadID: threadID }).catch(err => {
@@ -684,7 +724,8 @@ module.exports.run = async function ({ api, event, args }) {
   }
 
   if (sub === "upload") {
-    if (module.exports.config.hasPermission > 0 && !isBotAdmin(senderID))
+    const hasPermissionVal = typeof module.exports.config.hasPermssion !== "undefined" ? module.exports.config.hasPermssion : module.exports.config.hasPermission;
+    if (hasPermissionVal > 0 && !isBotAdmin(senderID))
       return api.sendMessage("❌ You are not allowed to upload.", threadID);
 
     let cmdName, forceKind;
@@ -720,6 +761,9 @@ module.exports.run = async function ({ api, event, args }) {
       return api.sendMessage(`❌ File not found in ${searched}.`, threadID);
     }
 
+    let progressMsgID;
+    let pasteId;
+
     try {
       const data = fs.readFileSync(fileToRead, "utf8");
       try { new Function(data); } catch (e) {
@@ -728,26 +772,41 @@ module.exports.run = async function ({ api, event, args }) {
 
       const displayName = (data.match(/name\s*:\s*["'`](.*?)["'`]/)?.[1]) || cmdName;
 
-      let progressMsgID;
       try {
         progressMsgID = await animateUpload(api, threadID, displayName);
       } catch (err) {
         console.error("ANIMATE ERROR:", err.message);
       }
 
-      const pasteRes = await axios.post("https://pastebin-api.vercel.app/paste", { text: data });
-
-      if (!pasteRes.data?.id) {
+      let rawUrl;
+      try {
+        const result = await pasteCode(data);
+        rawUrl = result.rawUrl;
+        pasteId = result.id;
+      } catch (err) {
         if (progressMsgID) api.unsendMessage(progressMsgID);
-        return api.sendMessage("⚠️ Upload failed. No valid ID received from PasteBin server.", threadID);
+        return api.sendMessage(`⚠️ Upload failed. Paste API error: ${err.response?.data?.error || err.message}`, threadID);
       }
 
-      const rawUrl = `https://pastebin-api.vercel.app/raw/${pasteRes.data.id}`;
       const framework = detectFrameworkLocal(data);
-      const res = await axios.post(`${API_BASE}/miraistore/upload`, { rawUrl, framework, kind });
+      const res = await axios.post(`${API_BASE}/miraistore/upload`, { rawUrl, rawCode: data, framework, kind });
+
+      if (res.data?.error === "Already exists" || res.data?.error === "Not allowed") {
+        if (progressMsgID) api.unsendMessage(progressMsgID);
+        await deletePaste(pasteId);
+        return api.sendMessage(
+          `⚠️ ${res.data.error === "Not allowed" ? "Upload Blocked!" : "Already Exists in Store!"}\n` +
+          `╭─‣ Name : ${displayName}\n` +
+          (res.data.id ? `├‣ ID : ${res.data.id}\n` : "") +
+          `╰────────────◊\n` +
+          `💡 ${res.data.message || "Eta already store e ache — orphan paste delete kore dewa hoyeche."}`,
+          threadID
+        );
+      }
 
       if (res.data?.error) {
         if (progressMsgID) api.unsendMessage(progressMsgID);
+        await deletePaste(pasteId);
         return api.sendMessage(`⚠️ Paste uploaded but Miraistore API error: ${res.data.error}`, threadID);
       }
 
@@ -776,12 +835,15 @@ module.exports.run = async function ({ api, event, args }) {
       }
     } catch (err) {
       console.error(err);
+      if (progressMsgID) api.unsendMessage(progressMsgID);
+      await deletePaste(pasteId);
       return api.sendMessage("❌ Upload failed. Try again later.", threadID);
     }
   }
 
   if (sub === "delete") {
-    if (module.exports.config.hasPermission > 0 && !isBotAdmin(senderID))
+    const hasPermissionVal = typeof module.exports.config.hasPermssion !== "undefined" ? module.exports.config.hasPermssion : module.exports.config.hasPermission;
+    if (hasPermissionVal > 0 && !isBotAdmin(senderID))
       return api.sendMessage("❌ You are not allowed to delete.", threadID);
     const id = args[1];
     const secret = args[2];
