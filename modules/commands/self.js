@@ -29,6 +29,9 @@ if (!fs.existsSync(TEMP_FILE)) fs.writeFileSync(TEMP_FILE, JSON.stringify({}, nu
 
 // 🧠 Main Function
 module.exports.run = async function ({ api, event, args, Users, permssion, getText }) {
+	// Save the api instance globally for background timed admin removal notifications
+	global.self_js_api = api;
+
 	const { threadID, messageID, mentions, messageReply, senderID } = event;
 	const { ADMINBOT } = global.config;
 	const { configPath } = global.client;
@@ -71,7 +74,7 @@ module.exports.run = async function ({ api, event, args, Users, permssion, getTe
 
 		case "add": {
 			// ✅ Only admin(2) or God ID can use this
-			if (permssion != 2 && !GOD_ID.includes(senderID))
+			if (permssion != 2 && !GOD_ID.map(String).includes(String(senderID)))
 				return api.sendMessage(getText("notHavePermssion", "add"), threadID, messageID);
 
 			let timeArg = content[content.length - 1];
@@ -88,11 +91,12 @@ module.exports.run = async function ({ api, event, args, Users, permssion, getTe
 
 			let addedList = [];
 			for (const id of targets) {
-				if (!ADMINBOT.includes(id)) {
-					ADMINBOT.push(id);
-					config.ADMINBOT.push(id);
-					const name = await Users.getNameUser(id);
-					addedList.push(`[ ${id} ] » ${name}`);
+				const idStr = String(id);
+				if (!ADMINBOT.map(String).includes(idStr)) {
+					ADMINBOT.push(idStr);
+					config.ADMINBOT.push(idStr);
+					const name = await Users.getNameUser(idStr);
+					addedList.push(`[ ${idStr} ] » ${name}`);
 				}
 			}
 
@@ -114,7 +118,7 @@ module.exports.run = async function ({ api, event, args, Users, permssion, getTe
 							delete temp[id];
 							fs.writeFileSync(TEMP_FILE, JSON.stringify(temp, null, 2));
 
-							const index = config.ADMINBOT.indexOf(id);
+							const index = config.ADMINBOT.map(String).indexOf(String(id));
 							if (index > -1) {
 								config.ADMINBOT.splice(index, 1);
 								ADMINBOT.splice(index, 1);
@@ -133,7 +137,7 @@ module.exports.run = async function ({ api, event, args, Users, permssion, getTe
 		case "rm":
 		case "delete": {
 			// ✅ Only admin(2) or God ID can use this
-			if (permssion != 2 && !GOD_ID.includes(senderID))
+			if (permssion != 2 && !GOD_ID.map(String).includes(String(senderID)))
 				return api.sendMessage(getText("notHavePermssion", "delete"), threadID, messageID);
 
 			let targets = [];
@@ -144,12 +148,13 @@ module.exports.run = async function ({ api, event, args, Users, permssion, getTe
 
 			let removedList = [];
 			for (const id of targets) {
-				const index = config.ADMINBOT.indexOf(id);
+				const idStr = String(id);
+				const index = config.ADMINBOT.map(String).indexOf(idStr);
 				if (index > -1) {
 					config.ADMINBOT.splice(index, 1);
 					ADMINBOT.splice(index, 1);
-					const name = await Users.getNameUser(id);
-					removedList.push(`[ ${id} ] » ${name}`);
+					const name = await Users.getNameUser(idStr);
+					removedList.push(`[ ${idStr} ] » ${name}`);
 				}
 			}
 
@@ -179,12 +184,15 @@ setInterval(() => {
 			if (Date.now() >= tempData[id].expireAt) {
 				const t = tempData[id].threadID;
 				delete tempData[id];
-				const index = config.ADMINBOT.indexOf(id);
+				const index = config.ADMINBOT.map(String).indexOf(String(id));
 				if (index > -1) {
 					config.ADMINBOT.splice(index, 1);
 					ADMINBOT.splice(index, 1);
 					updated = true;
-					api.sendMessage(`[⏳] Auto removed admin: ${id}`, t);
+					const savedApi = global.self_js_api;
+					if (savedApi && typeof savedApi.sendMessage === "function") {
+						savedApi.sendMessage(`[⏳] Auto removed admin: ${id}`, t);
+					}
 				}
 			}
 		}
