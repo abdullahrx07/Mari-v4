@@ -9,13 +9,7 @@ const totp = (secret) => _TOTP.generate(secret.replace(/\s+/g, '').toUpperCase()
 const logger = require("./utils/log");
 
 const colors = ["FF9900","FFFF33","33FFFF","FF99FF","FF3366","FFFF66","FF00FF","66FF99"];
-const randomColor = colors[Math.floor(Math.random() * colors.length)];
-
-// ===== GOAT/MIRAI RUNTIME COMPAT =====
-// GoatBot V2 command files can be dropped directly into /modules/commands
-// alongside native Mari-v3 commands now — no separate folder or
-// conversion step needed. main.js's loader normalizes each file at
-// require() time via utils/goatCompat.js.
+const randomColor = colors[Math.floor(Math.random() * colors.length)]
 
 fs.readFile('package.json', 'utf8', (err, data) => {
   if (err) return;
@@ -191,9 +185,9 @@ app.get('/download/mari-bot.zip', (req, res) => {
   const path = require('path');
   // Try new ST-FCA zip first, then legacy name
   const candidates = [
-    path.join(__dirname, '..', 'exports', 'mari-bot-stfca.zip'),
+    path.join(__dirname, '..', 'exports', 'mari-bot-fca.zip'),
     path.join(__dirname, '..', 'exports', 'mari-bot.zip'),
-    path.join(__dirname, '..', '..', 'mari-bot-stfca.zip'),
+    path.join(__dirname, '..', '..', 'mari-bot-fca.zip'),
   ];
   const zipPath = candidates.find(p => fs.existsSync(p));
   if (!zipPath) return res.status(404).send('Not found.');
