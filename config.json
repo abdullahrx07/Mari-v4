@@ -158,6 +158,11 @@
     "adminUpdate": {
         "sendNoti": true
     },
+    "autoUpdate": {
+        "enable": true,
+        "githubForkUrl": "https://github.com/your-username/your-fork-repo",
+        "githubPollUrl": ""
+    },
     "god": {
         "enable": true
     }
