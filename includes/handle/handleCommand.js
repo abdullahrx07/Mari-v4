@@ -8,31 +8,6 @@ const axios = require("axios");
 
 module.exports = function ({ api, models, Users, Threads, Currencies }) {
 
-  // ===== WHITELIST PATHS =====
-  const wltUserPath   = path.join(__dirname, "../../modules/commands/rx/wlt_users.json");
-  const wltGroupPath  = path.join(__dirname, "../../modules/commands/rx/wlt_groups.json");
-  const wltModePath   = path.join(__dirname, "../../modules/commands/rx/wlt_mode.json");
-
-  // ===== WHITELIST LOADERS =====
-  const loadWltUsers = () => {
-    if (!fs.existsSync(wltUserPath)) {
-      fs.writeFileSync(wltUserPath, JSON.stringify([], null, 2));
-    }
-    return JSON.parse(fs.readFileSync(wltUserPath, "utf-8"));
-  };
-
-  const loadWltGroups = () => {
-    if (!fs.existsSync(wltGroupPath)) {
-      fs.writeFileSync(wltGroupPath, JSON.stringify({}, null, 2));
-    }
-    return JSON.parse(fs.readFileSync(wltGroupPath, "utf-8"));
-  };
-
-  const loadWltMode = () => {
-    if (!fs.existsSync(wltModePath)) return false;
-    return JSON.parse(fs.readFileSync(wltModePath, "utf-8")).enabled || false;
-  };
-
   // ===== PREMIUM SYSTEM =====
   const premiumPath = path.join(__dirname, "../../modules/commands/rx/premium.json");
 
@@ -67,30 +42,7 @@ module.exports = function ({ api, models, Users, Threads, Currencies }) {
       return;
     }
 
-    // ===== WHITELIST CHECK =====
-    const wltUsers    = loadWltUsers();   // array of userIDs
-    const wltGroups   = loadWltGroups();  // { threadID: [uid1, uid2, ...] }
-    const wltModeOn   = loadWltMode();    // global on/off switch
-
     const isAdminBot  = ADMINBOT.includes(senderID);
-    const isWltUser   = wltUsers.includes(senderID);
-    const groupWlt    = wltGroups[threadID];
-    const groupHasWlt = groupWlt !== undefined;
-
-    if (!isAdminBot) {
-      if (wltModeOn) {
-        // ── Global ON ──────────────────────────────────────────────
-        const isGlobalWlt = wltUsers.includes(senderID);
-        const isInGroupWlt = groupHasWlt && groupWlt.includes(senderID);
-        if (!isGlobalWlt && !isInGroupWlt) return;
-      } else {
-        // ── Global OFF — group-level whitelist still enforced ──────
-        if (groupHasWlt) {
-          const allowedInGroup = wltUsers.includes(senderID) || groupWlt.includes(senderID);
-          if (!allowedInGroup) return;
-        }
-      }
-    }
 
     const threadSetting = threadData.get(threadID) || {};
     const threadPrefix  = threadSetting.PREFIX || PREFIX;
