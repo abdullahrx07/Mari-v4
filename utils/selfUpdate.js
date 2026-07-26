@@ -2,15 +2,8 @@
  * selfUpdate.js
  * ----------------------------------------------------------------------
  * Client side of the bot's self/auto-update system. Talks to a
- * user-hosted "update API" (URL configured via the UPDATE_API_URL
- * environment variable, or global.config.UPDATE_API_URL as a fallback).
- *
- * See /update.md at the project root for the full protocol this module
- * implements (request/response shape, checksum requirement, auth header).
- *
- * Nothing here is invented ad hoc — every request/response field this
- * file reads or sends is documented in update.md so a matching backend
- * can be built against that spec.
+ * user-hosted "update API" or checks a public GitHub fork repository
+ * for updates.
  * ----------------------------------------------------------------------
  */
 
@@ -19,6 +12,7 @@ const crypto = require("crypto");
 const fs = require("fs-extra");
 const path = require("path");
 const extractZip = require("extract-zip");
+const semver = require("semver");
 
 const ROOT_DIR = path.join(__dirname, "..");
 const CURRENT_VERSION = require(path.join(ROOT_DIR, "package.json")).version;
@@ -49,12 +43,85 @@ function getAuthHeaders() {
 	return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function parseGithubUrl(url) {
+	if (!url) return null;
+	const cleanUrl = url.replace(/\.git$/, "").replace(/\/$/, "");
+	const match = cleanUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+	if (match) {
+		return {
+			owner: match[1],
+			repo: match[2]
+		};
+	}
+	return null;
+}
+
+function getGithubConfig() {
+	const enable = (global.config && global.config.autoUpdate && global.config.autoUpdate.enable !== undefined)
+		? global.config.autoUpdate.enable
+		: (process.env.AUTO_UPDATE_ENABLE !== "false");
+
+	const githubForkUrl = (global.config && global.config.autoUpdate && global.config.autoUpdate.githubForkUrl)
+		|| process.env.GITHUB_FORK_URL
+		|| "";
+
+	const githubPollUrl = (global.config && global.config.autoUpdate && (global.config.autoUpdate.githubPollUrl || global.config.autoUpdate.githubPullUrl))
+		|| process.env.GITHUB_POLL_URL
+		|| process.env.GITHUB_PULL_URL
+		|| "";
+
+	return { enable, githubForkUrl, githubPollUrl };
+}
+
+async function fetchRemotePackageJson(owner, repo) {
+	const branches = ["main", "master"];
+	for (const branch of branches) {
+		try {
+			const url = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/package.json`;
+			const res = await axios.get(url, { timeout: 10000 });
+			if (res.data && res.data.version) {
+				return {
+					packageJson: res.data,
+					branch: branch
+				};
+			}
+		} catch (e) {
+			// Try next branch
+		}
+	}
+	throw new Error(`Could not fetch package.json from main or master branches of ${owner}/${repo}`);
+}
+
 /**
- * Asks the update API whether a newer version exists.
- * Returns null if no update API is configured (feature is opt-in).
- * Returns the parsed response body otherwise — see update.md for shape.
+ * Asks either the GitHub fork or the update API whether a newer version exists.
+ * Returns null if no update method is configured (feature is opt-in).
  */
 async function checkForUpdate() {
+	const { enable, githubForkUrl } = getGithubConfig();
+
+	// Check if GitHub-based update is enabled and configured
+	if (enable && githubForkUrl && githubForkUrl !== "https://github.com/your-username/your-fork-repo") {
+		const parsed = parseGithubUrl(githubForkUrl);
+		if (!parsed) {
+			throw new Error(`Invalid GitHub Fork URL: ${githubForkUrl}`);
+		}
+		const { packageJson, branch } = await fetchRemotePackageJson(parsed.owner, parsed.repo);
+		const remoteVersion = packageJson.version;
+		const updateAvailable = semver.gt(remoteVersion, CURRENT_VERSION);
+
+		return {
+			updateAvailable,
+			latestVersion: remoteVersion,
+			downloadUrl: `https://github.com/${parsed.owner}/${parsed.repo}/archive/refs/heads/${branch}.zip`,
+			checksum: null,
+			isGithub: true,
+			branch: branch,
+			githubForkUrl: githubForkUrl,
+			changelog: packageJson.description || "Updated via GitHub repo fork."
+		};
+	}
+
+	// Legacy update API check fallback
 	const base = getApiBase();
 	if (!base) return null;
 
@@ -76,12 +143,17 @@ async function checkForUpdate() {
  * ever touching disk with extracted content.
  */
 async function downloadAndVerify(downloadUrl, checksum) {
+	const isGitHubDownload = downloadUrl.includes("github.com") || downloadUrl.includes("githubusercontent.com");
 	const res = await axios.get(downloadUrl, {
 		responseType: "arraybuffer",
-		headers: getAuthHeaders(),
+		headers: isGitHubDownload ? {} : getAuthHeaders(),
 		timeout: 5 * 60 * 1000
 	});
 	const buf = Buffer.from(res.data);
+
+	if (!checksum && isGitHubDownload) {
+		return buf;
+	}
 
 	if (!checksum) throw new Error("Update API did not provide a checksum — refusing to install an unverifiable update.");
 	const actual = crypto.createHash("sha256").update(buf).digest("hex");
@@ -167,9 +239,52 @@ async function applyUpdate(buf, meta = {}) {
 async function runSelfUpdateCheck(logger) {
 	const log = logger || ((msg) => console.log("[ SELF-UPDATE ]", msg));
 	try {
+		const { enable, githubPollUrl } = getGithubConfig();
+		if (!enable) {
+			log("Auto-update is disabled.");
+			return;
+		}
+
 		const info = await checkForUpdate();
 		if (!info) return; // not configured, opt-in feature
 		if (!info.updateAvailable) return;
+
+		// If a poll URL is provided, send the pull request notification and stop direct update.
+		if (githubPollUrl && info.isGithub) {
+			log(`Update available: v${CURRENT_VERSION} -> v${info.latestVersion}. Poll URL configured. Sending pull request...`);
+			try {
+				await axios.post(githubPollUrl, {
+					event: "update_available",
+					currentVersion: CURRENT_VERSION,
+					latestVersion: info.latestVersion,
+					githubForkUrl: info.githubForkUrl,
+					downloadUrl: info.downloadUrl
+				}, {
+					timeout: 10000,
+					headers: {
+						"Content-Type": "application/json"
+					}
+				});
+				log(`Update pull request successfully sent to: ${githubPollUrl}`);
+			} catch (err) {
+				log(`Failed to send pull request to ${githubPollUrl}: ${err.message}. Retrying with GET...`);
+				try {
+					await axios.get(githubPollUrl, {
+						params: {
+							event: "update_available",
+							currentVersion: CURRENT_VERSION,
+							latestVersion: info.latestVersion,
+							githubForkUrl: info.githubForkUrl
+						},
+						timeout: 10000
+					});
+					log(`Update pull request successfully sent (GET) to: ${githubPollUrl}`);
+				} catch (getErr) {
+					log(`Failed to send pull request (GET) to ${githubPollUrl}: ${getErr.message}`);
+				}
+			}
+			return; // Avoid updating locally since poll URL is specified to handle/pull the update
+		}
 
 		log(`Update available: v${CURRENT_VERSION} -> v${info.latestVersion}. Downloading...`);
 		const buf = await downloadAndVerify(info.downloadUrl, info.checksum);
@@ -183,6 +298,7 @@ async function runSelfUpdateCheck(logger) {
 
 module.exports = {
 	CURRENT_VERSION,
+	getGithubConfig,
 	checkForUpdate,
 	downloadAndVerify,
 	applyUpdate,
