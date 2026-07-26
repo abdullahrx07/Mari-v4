@@ -1,12 +1,9 @@
 'use strict';
-/**
- * RX-FCA Logger — সব console output এই module দিয়ে যাবে
- * Prefix: [RX-FCA]  — সব line এ এই tag থাকবে
- */
+
 const chalk   = require('chalk');
 const gradient = require('gradient-string');
 
-const PREFIX = '[RX-FCA]';
+const PREFIX = '[MARi-boT]';
 
 // gradient color theme for the prefix label
 const _grd = gradient('#0066ff', '#00ccff', '#0066ff');
