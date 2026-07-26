@@ -12,6 +12,7 @@ module.exports.handleEvent = async ({
   api: t,
   Users: n
 }) => {
+  if (!o.body || typeof o.body !== "string") return;
   var {
     threadID: e,
     messageID: a,

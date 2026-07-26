@@ -13,6 +13,10 @@ module.exports = function ({ api, models, Users, Threads, Currencies }) {
 
   const loadpremium = () => {
     if (!fs.existsSync(premiumPath)) {
+      const parentDir = path.dirname(premiumPath);
+      if (!fs.existsSync(parentDir)) {
+        fs.mkdirSync(parentDir, { recursive: true });
+      }
       fs.writeFileSync(premiumPath, JSON.stringify({ users: {} }, null, 2));
     }
     return JSON.parse(fs.readFileSync(premiumPath));
