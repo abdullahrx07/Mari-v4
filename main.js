@@ -9,17 +9,6 @@ const gradient = require('gradient-string');
 const { execSync } = require('child_process');
 const logger = require("./utils/log.js");
 const con = require('./config.json');
-// fca-priyansh was flagged by Replit's package security scanner as
-// credential/session-harvesting malware and was removed from package.json —
-// do NOT reinstall it.
-//
-// Facebook login now uses the vendored ./includes/Fca library instead. That
-// copy was audited before being wired in here: a file (src/Dev_Horizon_Data.js)
-// that uploaded scraped user/thread data to a hardcoded third-party server
-// was deleted, and a dead code path that could auto-download and run
-// unsigned installers with sudo was removed from includes/Fca/index.js. The
-// library's own loader also already excludes every "Dev_*" file in
-// includes/Fca/src from the live API surface. See replit.md for details.
 let login = null;
 try {
 	login = require('@rxabdullah/xdi-fca');
@@ -99,7 +88,6 @@ else {
   co = gradient("#243aff", "#4687f0", "#5800d4");
   error = chalk.red.bold;
 }
-//////////////////////////////////////////////////////////////////////////////
 const listPackage = JSON.parse(readFileSync('./package.json')).dependencies;
 const listbuiltinModules = require("module").builtinModules;
 
@@ -197,9 +185,6 @@ global.api = (api) => {
     }
 
     }
-///////////////////////////////////////
-//== Find and get variable from Config =//
-/////////////////////////////////////////
 var configValue;
 try {
     global.client.configPath = join(global.client.mainPath, "config.json");
@@ -222,9 +207,6 @@ catch { return logger.loader("Lỗi tải tệp config!", "error") }
 const { mongoose, connect: connectDatabase } = require("./includes/database");
 
 writeFileSync(global.client.configPath + ".temp", JSON.stringify(global.config, null, 4), 'utf8');
-///////////////////////////////////////
-//======== Load language use =====/////
-///////////////////////////////////////
 
 const langFile = (readFileSync(`${__dirname}/languages/${global.config.language || "en"}.lang`, { encoding: 'utf-8' })).split(/\r?\n|\r/);
 const langData = langFile.filter(item => item.indexOf('#') != 0 && item != '');
@@ -257,9 +239,6 @@ try {
   } catch {
     logger.loader(global.getText('mirai', 'notFoundPathAppstate'), 'error')
   }
-/////////////////////////////////////
-// AUTO CLEAN CACHE CODE BY rX//
-/////////////////////////////////////
 if (global.config.autoCleanCache.Enable) {
   const folderPath = global.config.autoCleanCache.CachePath;
   const fileExtensions = global.config.autoCleanCache.AllowFileExtension;
@@ -286,9 +265,6 @@ logger(`Deleted the file jpg, mp4, gif, ttf, mp3`, "[ AUTO - CLEAN ]");
 } else {
 logger(`Auto Clean Cache Has been disabled`, "[ AUTO - CLEAN ]");
 }
-////////////////////////////////////////////////
-//========= Đăng nhập tài khoản, bắt đầu Nghe Sự kiện && Nhận tự động Appstate từ cấu hình =========//
-////////////////////////////////////////////////
 async function uptime() {
   const datauptime = require('./config.json');
   datauptime.UPTIME = process.uptime() + datauptime.UPTIME
@@ -303,26 +279,9 @@ function onBot({ models }) {
 
   const loginData = {}
 
-  // FIX: if appstate.json is missing/empty/invalid, `appState` ends up
-  // `undefined`. The original code still called login() with
-  // loginData.appState = undefined, and inside includes/Fca's login()
-  // neither the "email+password" branch nor the "appState" branch
-  // matches (both checks are falsy) -> the callback below was NEVER
-  // invoked -> the bot just hung silently, no email/password login was
-  // ever attempted.
-  //
-  // includes/Fca (the local `login` required at the top of this file)
-  // already supports logging in directly with email+password
-  // (loginData.email / loginData.password -> loginHelper), and on
-  // success it calls the SAME callback below with a working api, so
-  // commands/events load and MQTT listening starts immediately -
-  // no restart needed for this case.
   if (appState) {
     loginData.appState = appState
   } else {
-    // Credentials come from environment secrets (FB_EMAIL / FB_PASSWORD)
-    // first. acc.json is only a legacy fallback and should never hold a
-    // real plaintext password committed to the project.
     const logacc = require('./acc.json')
     const email = process.env.FB_EMAIL || logacc.EMAIL
     const password = process.env.FB_PASSWORD || logacc.PASSWORD
@@ -337,20 +296,11 @@ function onBot({ models }) {
 
   login(loginData, async (loginError, loginApiData) => {    
     if (loginError) {
-      // FIX: includes/Fca sets npmlog's logLevel to "silent" for
-      // email+password logins, so its internal log.error(...) calls
-      // produce ZERO output - the real failure reason was completely
-      // hidden. Dump the actual error object here (bypasses npmlog)
-      // so we can see WHY the login failed (wrong password, checkpoint,
-      // 2FA, region block, etc.)
       console.log('========== includes/Fca LOGIN ERROR (full detail) ==========')
       console.log(require('util').inspect(loginError, { depth: null, colors: false }))
       if (loginError && loginError.stack) console.log(loginError.stack)
       console.log('==============================================================')
 
-      // Login (appstate OR email/password, both via includes/Fca) failed.
-      // Restart so includes/Fca retries with EMAIL/PASSWORD from acc.json
-      // on the next run (no fca-priyansh fallback anymore).
       logger('Login failed via includes/Fca. Restarting to retry...','[ LOGIN-ERROR ]')
       await new Promise((reset) => setTimeout(reset, 7000))
       logger('Starting to restart!', '[ RESTART ]')
@@ -366,8 +316,6 @@ loginApiData.setOptions(global.config.FCAOption)
     } else {
       writeFileSync(appStateFile, loginState)
     }
-////////////////////////////////////////////
-////////////////////////////////////////////
     global.client.api = loginApiData;
     global.config.version = '4.6.9'
     global.client.timeStart = new Date().getTime(),
@@ -521,11 +469,6 @@ loginApiData.setOptions(global.config.FCAOption)
         await new Promise((resolve) => setTimeout(resolve, 7000));
         process.exit(1);
       }
-      // Skip non-message noise — both classic MQTT events and E2EE system events.
-      // NOTE: 'e2ee_message_reaction' must NOT be skipped here — listen.js
-      // already has full handling for it (routes to handleReaction, the
-      // react-to-unsend icon check, etc). Skipping it here silently drops
-      // every reaction sent in E2EE (encrypted) groups.
       const _skipTypes = ['presence', 'typ', 'read_receipt',
         'e2ee_ready', 'e2ee_fully_ready', 'e2ee_connected',
         'e2ee_disconnected', 'e2ee_device_data_changed',
@@ -582,7 +525,6 @@ loginApiData.setOptions(global.config.FCAOption)
         }
     };
 
-    // --- ONE-TIME MIGRATION TO MONGODB ---
     try {
         const thuebotPath = path.join(__dirname, "modules", "commands", "data", "thuebot.json");
         if (fs.existsSync(thuebotPath)) {
@@ -630,9 +572,6 @@ loginApiData.setOptions(global.config.FCAOption)
     const botData = { models: models }
     onBot(botData)
 
-    // Self-update system (see /update.md). Opt-in: does nothing unless
-    // UPDATE_API_URL is configured. Checked once on boot, then on an
-    // interval so a long-running bot picks up new releases on its own.
     const { runSelfUpdateCheck } = require('./utils/selfUpdate')
     const updateLog = (msg) => logger(msg, '[ SELF-UPDATE ]')
     runSelfUpdateCheck(updateLog)
