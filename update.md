@@ -1,15 +1,57 @@
-# Mari-v3 Self-Update Protocol
+# Mari-v3 Self-Update Protocol & GitHub Fork Auto-Update
 
-Mari-v3 can check a remote "update API" for new releases, download them,
-verify their integrity, and apply them to itself — no manual redeploy
-needed. This feature is **opt-in**: the bot does nothing update-related
-unless `UPDATE_API_URL` is set.
+Mari-v3 supports two separate update systems: the standard self-update API check, and a public GitHub fork repository version checker. These update systems are fully opt-in and configurable.
 
-This document is the contract the bot's client (`utils/selfUpdate.js`)
-implements. Build your update API to match this exactly and it will work
-with no client-side changes.
+---
 
-## Configuration (bot side)
+## 1. GitHub Public Fork & Poll URL Auto-Update (New)
+
+The bot can check a public GitHub repository (or fork) for new versions, automatically pull/clone the code to self-update, or send a Pull Request notification to a poll/pull webhook.
+
+### Configuration (`config.json` or Environment Variables)
+
+You can manage the settings under the `"autoUpdate"` object in `config.json` or via environment variables:
+
+| Setting (Config Key) | Env Variable | Default | Purpose |
+|---|---|---|---|
+| `"autoUpdate": { "enable": true }` | `AUTO_UPDATE_ENABLE` | `true` | Toggle the auto-update system on/off. |
+| `"autoUpdate": { "githubForkUrl": "..." }` | `GITHUB_FORK_URL` | empty | The public GitHub repository or fork URL to monitor (e.g., `https://github.com/username/repo`). |
+| `"autoUpdate": { "githubPollUrl": "..." }` | `GITHUB_POLL_URL` or `GITHUB_PULL_URL` | empty | (Optional) If specified, the bot will send an update notification here instead of updating directly. |
+
+### How It Works
+
+1. **Version Checking**:
+   The bot reads its current version from `package.json`'s `"version"` field. It then fetches the remote `package.json` from the target GitHub repository's default branches (`main` or `master`) via `raw.githubusercontent.com`.
+2. **Comparison**:
+   Using the `semver` library, the bot checks if the remote version is strictly greater than the current version (`semver.gt`).
+3. **Update Delivery**:
+   - **Case A: `githubPollUrl` is configured**:
+     Instead of updating files directly, the bot dispatches an HTTP POST request (falling back to GET) to the `githubPollUrl` to notify your deployment setup about the new update.
+
+     **POST Payload**:
+     ```json
+     {
+       "event": "update_available",
+       "currentVersion": "4.0.0",
+       "latestVersion": "4.1.0",
+       "githubForkUrl": "https://github.com/username/repo",
+       "downloadUrl": "https://github.com/username/repo/archive/refs/heads/main.zip"
+     }
+     ```
+
+     **GET Query Params Fallback**:
+     `?event=update_available&currentVersion=4.0.0&latestVersion=4.1.0&githubForkUrl=...`
+
+   - **Case B: No `githubPollUrl` configured**:
+     The bot downloads the target repository's branch ZIP archive directly, extracts it, overwrites local files (excluding folders/files listed in the `PRESERVE` list), and gracefully restarts the process (`process.exit(1)`) to apply the changes.
+
+---
+
+## 2. Legacy Self-Update API Protocol
+
+This system talks to a user-hosted "update API" and is active if `UPDATE_API_URL` is set and no GitHub fork is configured.
+
+### Configuration (bot side)
 
 | Setting | Where | Required | Purpose |
 |---|---|---|---|
@@ -17,22 +59,13 @@ with no client-side changes.
 | `UPDATE_API_TOKEN` | environment variable | optional | If set, sent as `Authorization: Bearer <token>` on every request |
 | `UPDATE_CHECK_INTERVAL_MS` | `config.json` | optional | How often to auto-check in the background. Default: `21600000` (6 hours) |
 
-The bot's current version is read from `package.json`'s `"version"` field
-— bump that on every release you ship.
+### When checks happen
 
-## When checks happen
+1. Once, a few seconds after the bot finishes connecting to the database on every boot/restart.
+2. On a repeating timer (`UPDATE_CHECK_INTERVAL_MS`) while the process stays up.
+3. On demand: a bot admin can run the `update` command in Messenger (`!update`) to trigger an immediate check.
 
-1. Once, a few seconds after the bot finishes connecting to the database
-   on every boot/restart.
-2. On a repeating timer (`UPDATE_CHECK_INTERVAL_MS`) while the process
-   stays up.
-3. On demand: a bot admin can run the `update` command in Messenger
-   (`!update` with the default prefix) to trigger an immediate check
-   with user-visible progress messages.
-
-## 1. Check for an update
-
-**Request**
+### Request
 
 ```
 GET {UPDATE_API_URL}/api/updates/check?version={currentVersion}&botName={botName}
@@ -40,10 +73,9 @@ Authorization: Bearer {UPDATE_API_TOKEN}   (only if UPDATE_API_TOKEN is set)
 ```
 
 - `version` — the bot's current `package.json` version, e.g. `3.1.0`.
-- `botName` — the value of `config.json`'s `BOTNAME`, for your own
-  logging/multi-bot-fleet tracking. Optional to use server-side.
+- `botName` — the value of `config.json`'s `BOTNAME`.
 
-**Response** — `200 OK`, JSON body:
+### Response — `200 OK`, JSON body:
 
 ```json
 {
@@ -51,40 +83,15 @@ Authorization: Bearer {UPDATE_API_TOKEN}   (only if UPDATE_API_TOKEN is set)
   "latestVersion": "3.2.0",
   "downloadUrl": "https://updates.example.com/releases/3.2.0.zip",
   "checksum": "b2f5b2b3b3c1...<sha256 hex, 64 chars>",
-  "changelog": "- Fixed goat image sending\n- Added self-update system"
+  "changelog": "- Fixed bugs\n- Added self-update system"
 }
 ```
 
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `updateAvailable` | boolean | **yes** | If `false`, no other field is read — the bot stops here. |
-| `latestVersion` | string | yes, if `updateAvailable` | Shown to the user and written to `includes/datajson/updateState.json` after a successful update. |
-| `downloadUrl` | string (URL) | yes, if `updateAvailable` | Must point to a `.zip` of the new release. Must be reachable with the same `Authorization` header the bot already sent (or be public). |
-| `checksum` | string (sha256 hex) | **yes, if `updateAvailable`** | The bot **refuses to install** an update with a missing or mismatching checksum. Compute this over the exact bytes of the zip file. |
-| `changelog` | string | no | Freeform text, shown to the admin who triggered/observes the update. |
+---
 
-If the response is missing `updateAvailable` as a boolean, the bot treats
-the whole check as failed and logs an error — it does not guess.
+## 3. Preservation List (Never Overwritten)
 
-## 2. Download the update package
-
-The bot does a plain `GET {downloadUrl}` (same `Authorization` header)
-expecting the raw zip bytes (`responseType: arraybuffer`). No special
-content-type is required, but serving `application/zip` is recommended.
-
-## 3. Package format
-
-The zip should contain the full project tree exactly as it should exist
-after the update (a straight file replacement), either at the zip root or
-inside a single top-level folder (the bot auto-detects and descends into
-one wrapping folder, e.g. how GitHub's "Download ZIP" nests everything
-under `repo-name-branch/`).
-
-### Files the bot will never overwrite
-
-The bot skips these paths when applying an update, no matter what the
-zip contains — they hold local secrets or local runtime state that must
-survive an update untouched:
+Whether updating via GitHub fork or custom API, the bot **never overwrites** these paths to prevent loss of local credentials, configuration, or databases:
 
 ```
 node_modules/
@@ -99,45 +106,3 @@ includes/data_sqlite/
 data.sqlite
 update.md
 ```
-
-If your release changes `config.json`'s *shape* (new keys), ship a
-migration note in `changelog` — the bot does not auto-merge config
-changes, by design, so an admin's live config/secrets are never
-silently rewritten.
-
-## 4. After a successful update
-
-The bot writes `includes/datajson/updateState.json`:
-
-```json
-{
-  "version": "3.2.0",
-  "appliedAt": "2026-07-14T10:00:00.000Z",
-  "previousVersion": "3.1.0"
-}
-```
-
-then exits the process (`process.exit(1)`) so the process manager /
-Replit workflow restarts it on the new code. There is no separate
-"restart" step your API needs to trigger — exiting after a successful
-copy is the mechanism.
-
-## 5. Failure handling
-
-- Any network error, non-2xx response, malformed JSON, or checksum
-  mismatch aborts the update. The bot logs the reason and keeps running
-  on its current version — it never partially applies an update.
-- The periodic background check never crashes the bot on failure; the
-  `update` command reports the failure back to the admin who ran it.
-
-## Suggested (not required) server-side behavior
-
-- Version comparison: the bot always sends its current version and lets
-  your API decide `updateAvailable` — semver comparison, a manual
-  allow-list, staged rollouts, etc. are entirely up to your API.
-- Auth: use `UPDATE_API_TOKEN` to gate who can pull releases if this
-  isn't a public endpoint.
-- Serve `downloadUrl` from the same host/CDN so the same bearer token
-  (if any) is valid for both requests, or make the download URL public
-  (e.g. a signed/short-lived link) if your check endpoint is private but
-  downloads shouldn't require the same auth.
