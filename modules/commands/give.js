@@ -2,13 +2,6 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 
-const VIP_FILE = path.join(__dirname, "vip.json");
-
-// Create vip.json if not exists
-if (!fs.existsSync(VIP_FILE)) {
-  fs.writeFileSync(VIP_FILE, JSON.stringify(["61579782879961"], null, 2));
-}
-
 module.exports.config = {
   name: "give",
   version: "1.3",
@@ -22,7 +15,7 @@ module.exports.config = {
 
 module.exports.run = async function({ api, event, args }) {
   const { threadID, messageID, senderID, mentions, type, messageReply } = event;
-  const vipList = JSON.parse(fs.readFileSync(VIP_FILE));
+  const vipList = await global.systemData.get("vip_list", ["61579782879961"]);
 
   // --- VIP SYSTEM ---
   if (args[0] && args[0].toLowerCase() === "vip") {
@@ -49,7 +42,7 @@ module.exports.run = async function({ api, event, args }) {
       }
 
       vipList.push(targetID);
-      fs.writeFileSync(VIP_FILE, JSON.stringify(vipList, null, 2));
+      await global.systemData.set("vip_list", vipList);
 
       return api.sendMessage(`✅ Successfully added <@${targetID}> as VIP!`, threadID, messageID);
     }

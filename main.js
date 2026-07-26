@@ -525,50 +525,6 @@ loginApiData.setOptions(global.config.FCAOption)
         }
     };
 
-    try {
-        const thuebotPath = path.join(__dirname, "modules", "commands", "data", "thuebot.json");
-        if (fs.existsSync(thuebotPath)) {
-            const data = fs.readJsonSync(thuebotPath, { throws: false }) || [];
-            if (Array.isArray(data) && data.length > 0) {
-                await global.systemData.set("approved_threads", data);
-                logger(`Migrated thuebot.json to MongoDB.`, '[ DATABASE-MIGRATION ]');
-            }
-            fs.renameSync(thuebotPath, thuebotPath + ".bak");
-        }
-
-        const vipPath = path.join(__dirname, "modules", "commands", "rx", "vip.json");
-        if (fs.existsSync(vipPath)) {
-            const data = fs.readJsonSync(vipPath, { throws: false }) || [];
-            if (Array.isArray(data) && data.length > 0) {
-                await global.systemData.set("vip_list", data);
-                logger(`Migrated vip.json to MongoDB.`, '[ DATABASE-MIGRATION ]');
-            }
-            fs.renameSync(vipPath, vipPath + ".bak");
-        }
-
-        const vipModePath = path.join(__dirname, "modules", "commands", "rx", "vipMode.json");
-        if (fs.existsSync(vipModePath)) {
-            const data = fs.readJsonSync(vipModePath, { throws: false }) || {};
-            if (typeof data.vipMode !== "undefined") {
-                await global.systemData.set("vip_mode", !!data.vipMode);
-                logger(`Migrated vipMode.json to MongoDB.`, '[ DATABASE-MIGRATION ]');
-            }
-            fs.renameSync(vipModePath, vipModePath + ".bak");
-        }
-
-        const userPrefixPath = path.join(__dirname, "modules", "commands", "rx", "userPrefix.json");
-        if (fs.existsSync(userPrefixPath)) {
-            const data = fs.readJsonSync(userPrefixPath, { throws: false }) || {};
-            if (Object.keys(data).length > 0) {
-                await global.systemData.set("user_prefixes", data);
-                logger(`Migrated userPrefix.json to MongoDB.`, '[ DATABASE-MIGRATION ]');
-            }
-            fs.renameSync(userPrefixPath, userPrefixPath + ".bak");
-        }
-    } catch (migErr) {
-        logger("Database migration warning: " + migErr.message, '[ DATABASE-MIGRATION ]');
-    }
-
     const botData = { models: models }
     onBot(botData)
 
