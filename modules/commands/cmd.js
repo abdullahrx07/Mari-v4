@@ -1,7 +1,7 @@
 module.exports.config = {
     name: "cmd",
     version: "1.0.0",
-    hasPermssion: 2,
+    hasPermssion: 1,
     credits: "rX",
     description: "Manage/Control all bot modules",
     commandCategory: "System",
@@ -136,8 +136,6 @@ const unloadModule = function ({ moduleList, threadID, messageID }) {
 
 module.exports.run = function ({ event, args, api }) {
   
-    if (event.senderID != 100068565380737) return api.sendMessage(`[ 𝗖𝗠𝗗 ] » What the are you using 😏`, event.threadID, event.messageID)
-    
     const { readdirSync } = global.nodemodule["fs-extra"];
     const { threadID, messageID } = event;
 
