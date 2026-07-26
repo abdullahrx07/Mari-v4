@@ -6,8 +6,8 @@ const API_BASE = "https://mirai-store.vercel.app";
 const userSeenNoti = new Map();
 
 function isBotAdmin(senderID) {
-  const adminList = (global.config && global.config.adminBot) || [];
-  return adminList.includes(String(senderID));
+  const adminList = (global.config && (global.config.ADMINBOT || global.config.adminBot)) || [];
+  return adminList.map(String).includes(String(senderID));
 }
 
 let _updateCheckCache = null;
@@ -61,7 +61,7 @@ module.exports.config = {
   aliases: ["ms", "shop"],
   premium: true,
   version: "3.1.0",
-  hasPermission: 1,
+  hasPermssion: 1,
   credits: "rX",
   description: "Mirai Command Store (Search, Like, Upload, Install, Delete, Trending, List)",
   commandCategory: "system",
@@ -673,7 +673,8 @@ module.exports.run = async function ({ api, event, args }) {
   }
 
   if (sub === "sync") {
-    if (module.exports.config.hasPermission > 0 && !isBotAdmin(senderID))
+    const hasPermissionVal = typeof module.exports.config.hasPermssion !== "undefined" ? module.exports.config.hasPermssion : module.exports.config.hasPermission;
+    if (hasPermissionVal > 0 && !isBotAdmin(senderID))
       return api.sendMessage("❌ You are not allowed to run sync.", threadID);
     api.sendMessage("🔄 Syncing all commands to MiraiStore... background e cholbe.", threadID);
     runAutoSync({ silent: false, notifyApi: api, notifyThreadID: threadID }).catch(err => {
@@ -684,7 +685,8 @@ module.exports.run = async function ({ api, event, args }) {
   }
 
   if (sub === "upload") {
-    if (module.exports.config.hasPermission > 0 && !isBotAdmin(senderID))
+    const hasPermissionVal = typeof module.exports.config.hasPermssion !== "undefined" ? module.exports.config.hasPermssion : module.exports.config.hasPermission;
+    if (hasPermissionVal > 0 && !isBotAdmin(senderID))
       return api.sendMessage("❌ You are not allowed to upload.", threadID);
 
     let cmdName, forceKind;
@@ -781,7 +783,8 @@ module.exports.run = async function ({ api, event, args }) {
   }
 
   if (sub === "delete") {
-    if (module.exports.config.hasPermission > 0 && !isBotAdmin(senderID))
+    const hasPermissionVal = typeof module.exports.config.hasPermssion !== "undefined" ? module.exports.config.hasPermssion : module.exports.config.hasPermission;
+    if (hasPermissionVal > 0 && !isBotAdmin(senderID))
       return api.sendMessage("❌ You are not allowed to delete.", threadID);
     const id = args[1];
     const secret = args[2];
