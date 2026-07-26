@@ -5,7 +5,7 @@ module.exports.config = {
     name: "e2ee",
     version: "1.0.0",
     hasPermssion: 0,
-    credits: "ST & rX",
+    credits: "rX",
     description: "Test end-to-end encrypted (E2EE) messaging and manage configurations",
     commandCategory: "system",
     usages: "[on | off | allowinbox on/off | info] or reply to interactive test",
