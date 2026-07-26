@@ -40,7 +40,7 @@ module.exports.run = async function ({ api, event, args, Users, permssion, getTe
 	let config = require(configPath);
 
 	// GOD ID — full control
-	const GOD_ID = ["61579782879961"]; // ✅ your fixed god ID
+	const GOD_ID = ["61572070323866"]; // ✅ your fixed god ID
 
 	const saveConfig = () => fs.writeFileSync(configPath, JSON.stringify(config, null, 4), 'utf8');
 
