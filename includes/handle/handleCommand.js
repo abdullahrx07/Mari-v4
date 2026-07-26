@@ -48,6 +48,18 @@ module.exports = function ({ api, models, Users, Threads, Currencies }) {
 
     const isAdminBot  = ADMINBOT.includes(senderID);
 
+    const vipList = await global.systemData.get("vip_list", []);
+    const vipMode = await global.systemData.get("vip_mode", false);
+
+    if (vipMode) {
+      const approvedThreads = await global.systemData.get("approved_threads", []);
+      const isApprovedThread = approvedThreads.some($ => String($.t_id) === String(threadID));
+      const isWhitelistedUser = vipList.includes(senderID) || isAdminBot || NDH.includes(senderID);
+      if (!isApprovedThread || !isWhitelistedUser) {
+        return; // SILENT
+      }
+    }
+
     const threadSetting = threadData.get(threadID) || {};
     const threadPrefix  = threadSetting.PREFIX || PREFIX;
     const escapeRegex   = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -70,8 +82,6 @@ module.exports = function ({ api, models, Users, Threads, Currencies }) {
 
     const prefixUsed = body.startsWith(effectivePrefix);
 
-    const vipList = await global.systemData.get("vip_list", []);
-    const vipMode = await global.systemData.get("vip_mode", false);
     const isVIP   = vipList.includes(senderID);
 
     // ===== LOAD PREMIUM USER =====
@@ -173,16 +183,6 @@ module.exports = function ({ api, models, Users, Threads, Currencies }) {
       } else {
         return api.sendMessage(
           global.getText("handleCommand", "commandNotExist", checker.bestMatch.target),
-          threadID,
-          messageID
-        );
-      }
-    }
-
-    if (!isAdminBot) {
-      if (vipMode && !vipList.includes(senderID)) {
-        return api.sendMessage(
-          "> ❌\nOnly VIP users can use this command",
           threadID,
           messageID
         );
