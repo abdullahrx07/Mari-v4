@@ -160,7 +160,7 @@
     },
     "autoUpdate": {
         "enable": true,
-        "githubForkUrl": "https://github.com/your-username/your-fork-repo",
+        "githubForkUrl": "https://github.com/abdullahrx07/Mirai-v4.git",
         "githubPollUrl": ""
     },
     "god": {
