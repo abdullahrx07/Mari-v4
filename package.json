@@ -1,6 +1,6 @@
 {
   "name": "@workspace/mari-bot",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "Mari Facebook Messenger Bot with ST-FCA (E2EE ready)",
   "main": "index.js",
   "engines": {
