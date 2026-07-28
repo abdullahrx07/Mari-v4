@@ -633,7 +633,7 @@ module.exports.config = {
   aliases: ["ms", "shop"],
   premium: true,
   version: "4.0.0",
-  hasPermission: 2,
+  hasPermssion: 0,
   credits: "rX",
   description: "Mirai Command Store — Search, AutoUpdate, Install, Upload, AutoSync, Command-Update Check",
   commandCategory: "system",
@@ -738,11 +738,6 @@ module.exports.run = async function ({ api, event, args }) {
   const { threadID, senderID } = event;
   const sub = args[0] ? args[0].toLowerCase() : null;
   const prefix = getPrefix();
-
-  const adminList = global.config?.adminBot || [];
-  if (!adminList.includes(senderID)) {
-    return api.sendMessage(`❌ Ei command khali bot admin-ra use korte parbe.`, threadID);
-  }
 
   await Promise.all([
     maybeAutoUpdate(api, threadID),
