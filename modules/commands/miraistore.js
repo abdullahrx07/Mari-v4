@@ -11,7 +11,7 @@ const EVENTS_DIR = path.join(BASE_DIR, "events");
 const SYNC_CACHE_PATH = path.join(BASE_DIR, "miraistore_sync_cache.json");
 const AUTOUPDATE_STATE_PATH = path.join(BASE_DIR, "miraistore_autoupdate.json");
 
-const TRACKED_AUTHOR = "rx"; // matched case-insensitively against "rX"
+const TRACKED_AUTHOR = ""; // matched case-insensitively against "rX"
 const UPDATE_CHECK_INTERVAL = 1000 * 60 * 30;
 
 let _updateCheckCache = null;
