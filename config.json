@@ -27,7 +27,7 @@
         "61572070323866"
     ],
     "DATABASE": {
-        "type": "mongodb",
+        "type": "sqlite",
         "sqlite": {
             "storage": "data.sqlite"
         },
