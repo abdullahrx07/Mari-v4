@@ -1,7 +1,7 @@
 {
-  "name": "@workspace/mari-bot",
+  "name": "@mari/privacy boT",
   "version": "4.0.1",
-  "description": "Mari Facebook Messenger Bot with ST-FCA (E2EE ready)",
+  "description": "GROUP PRIVACY BOT",
   "main": "index.js",
   "engines": {
     "node": "20.x"
