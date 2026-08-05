@@ -1,83 +1,60 @@
-let antiGaliStatus = false; // Default Off now
+let antiGaliStatus = false; // Default Off
 let offenseTracker = {}; // threadID -> userID -> { count, uidSaved }
+let skipMode = 0; // 0 = no skip, 1 = admin only skip, 2 = admin + group admin skip
 
 const badWords = [
   "কুত্তার বাচ্চা","মাগী","মাগীচোদ","চোদা","চুদ","চুদা","চুদামারান",
   "চুদির","চুত","চুদি","চুতমারানি","চুদের বাচ্চা","shawya","বালের","বালের ছেলে","বালছাল",
   "বালছাল কথা","মাগীর ছেলে","রান্ডি","রান্দি","রান্দির ছেলে","বেশ্যা","বেশ্যাপনা",
-  "Khanki","mgi","তোকে চুদি","তুই চুদ","fuck","f***","fck","mc","bc","xhudas","abal","fucking",
+  "Khanki","mgi","তোকে চুদি","তুই চুদ","fuck","f***","fck","mc","bc","xdi","abal","fucking",
   "motherfucker","guyar","mfer","motherfuer","mthrfckr","putki","abdullak chudi","abdullak xudi","jawra","bot chudi","bastard",
-  "bessa","hijra","a*hole","dick","fu***k","cock","prick","pussy","Mariak cudi","cunt","fag","faggot","retard",
+  "bessa","hijra","a*hole","dick","fu***k","cock","prick","pussy","Mariak cudi","cunt","fag","mgi","retard",
   "magi","magir","magirchele","land","randir","randirchele","chuda","chud","chudir","chut","chudi","chutmarani",
   "tor mayer","tor baper","toke chudi","chod","jairi","khankir pola","khanki magi"
 ];
 
 module.exports.config = {
   name: "antigali",
-  version: "3.3.0",
+  version: "3.4.0",
   hasPermssion: 0,
   credits: "Rx Abdullah",
-  description: "Per-user anti-gali with UID match for kick + admin checks (default ON)",
+  description: "Per-user anti-gali with UID match for kick + admin skip options (reply-select)",
   commandCategory: "moderation",
-  usages: "!antigali on / !antigali off",
+  usages: "!antigali on / !antigali off / !antigali (select skip mode)",
   cooldowns: 0
 };
 
 module.exports.handleEvent = async function ({ api, event, Threads }) {
   try {
-    // if disabled or no text, ignore
     if (!antiGaliStatus || !event.body) return;
 
     const message = event.body.toLowerCase();
     const threadID = event.threadID;
     const userID = event.senderID;
-    const botID = api.getCurrentUserID && api.getCurrentUserID(); // bot uid
+    const botID = api.getCurrentUserID && api.getCurrentUserID();
 
-    // init tracker
     if (!offenseTracker[threadID]) offenseTracker[threadID] = {};
     if (!offenseTracker[threadID][userID]) offenseTracker[threadID][userID] = { count: 0, uidSaved: userID };
 
-    // check bad words
     if (!badWords.some(word => message.includes(word))) return;
 
-    // increase per-user count
-    let userData = offenseTracker[threadID][userID];
-    userData.count += 1;
-    const count = userData.count;
-
-    // fetch user info and thread info (for admin checks)
-    let userInfo = {};
-    try {
-      userInfo = await api.getUserInfo(userID);
-    } catch (e) {
-      console.error("getUserInfo error:", e);
-    }
-    const userName = userInfo[userID]?.name || "User";
-
-    // try to get thread data (to check admin list)
+    // fetch thread info (for admin checks)
     let threadInfo = {};
     try {
-      // prefer Threads.getData if available (some frameworks)
       if (Threads && typeof Threads.getData === "function") {
         const tdata = await Threads.getData(threadID);
         threadInfo = tdata.threadInfo || {};
       } else if (typeof api.getThreadInfo === "function") {
         threadInfo = await api.getThreadInfo(threadID) || {};
-      } else {
-        // fallback: try api.getThreadList or leave threadInfo empty
-        threadInfo = {};
       }
     } catch (e) {
       console.error("get thread info error:", e);
-      threadInfo = {};
     }
 
-    // prepare helper to check if a uid is admin in this thread
     const isAdminInThread = (uid) => {
       try {
         if (!threadInfo || !threadInfo.adminIDs) return false;
         return threadInfo.adminIDs.some(item => {
-          // item might be object {id: '...'} or string
           if (typeof item === "string") return item == String(uid);
           if (item && item.id) return String(item.id) == String(uid);
           return false;
@@ -87,86 +64,71 @@ module.exports.handleEvent = async function ({ api, event, Threads }) {
       }
     };
 
-    // Frame-style warning message (includes UID)
-    const frameBase = (n, extraLine = '') => (
-`╔══════════════════════════════╗
-⚠️ 𝗪𝗔𝗥𝗡𝗜𝗡𝗚 #${n}
-User: ${userName} (UID: ${userID})
-Message contains prohibited words
-🔁 Offense Count: ${n}
-${extraLine}
-╚══════════════════════════════╝`
-    );
+    const isBotAdmin = (uid) => {
+      try {
+        const adminList = (global.config && global.config.adminBot) || [];
+        return adminList.some(id => String(id) == String(uid));
+      } catch (e) {
+        return false;
+      }
+    };
 
-    // 1st offense
-    if (count === 1) {
-      const msg = frameBase(1, '🛑 Please clean/unsend immediately');
-      await api.sendMessage(msg, threadID, event.messageID);
+    // ---- SKIP LOGIC (based on selected mode) ----
+    if (skipMode === 1 && isBotAdmin(userID)) return; // admin only skip
+    if (skipMode === 2 && (isBotAdmin(userID) || isAdminInThread(userID))) return; // admin + group admin skip
+
+    let userData = offenseTracker[threadID][userID];
+    userData.count += 1;
+    const count = userData.count;
+
+    let userInfo = {};
+    try {
+      userInfo = await api.getUserInfo(userID);
+    } catch (e) {
+      console.error("getUserInfo error:", e);
     }
+    const userName = userInfo[userID]?.name || "User";
 
-    // 2nd offense
-    else if (count === 2) {
-      const msg = frameBase(2, '🛑 Please clean/unsend immediately\n⚠️ Next offense will result in removal');
-      await api.sendMessage(msg, threadID, event.messageID);
-    }
+    // ---- Frame removed, simple detection text ----
+    const detectMsg = `⚠️ Prohibited word detected — ${userName} (UID: ${userID}) | Offense ${count}/3`;
+    await api.sendMessage(detectMsg, threadID, event.messageID);
 
-    // schedule auto-unsend for the offending message (1 minute)
     setTimeout(() => {
       api.unsendMessage(event.messageID).catch(err => {
-        // fail silently but log
         console.error("Failed to unsend:", err);
       });
     }, 60000);
 
-    // 3rd offense: attempt to kick, but check admin rules
     if (count === 3) {
-      // if bot is not admin -> cannot kick
       const botIsAdmin = botID ? isAdminInThread(botID) : false;
       if (!botIsAdmin) {
-        // reset or keep count? keep but notify that bot cannot kick
-        // Here we reset to 2 so next offense will again be '3' attempt (optional)
         userData.count = 2;
         return api.sendMessage(
-`╔══════════════════════════════╗
-⚠️ 𝗔𝗖𝗧𝗜𝗢𝗡 𝗕𝗟𝗢𝗖𝗞𝗘𝗗
-I (bot) am not a group admin, so I cannot remove users.
-Please promote the bot to admin or have a human admin remove the user.
-User: ${userName} (UID: ${userID})
-╚══════════════════════════════╝`,
+          `⚠️ Cannot remove ${userName} (UID: ${userID}) — bot is not a group admin.`,
           threadID
         );
       }
 
-      // if target is group admin -> do NOT kick, inform
       if (isAdminInThread(userID)) {
-        // reset count to 2 so they get last warning but won't be removed
         userData.count = 2;
         return api.sendMessage(
-`╔══════════════════════════════╗
-⚠️ 𝗔𝗖𝗧𝗜𝗢𝗡 𝗕𝗟𝗢𝗖𝗞𝗘𝗗
-Cannot remove user because they are a group admin.
-User: ${userName} (UID: ${userID})
-If you believe removal is still needed, a group admin must remove them manually.
-╚══════════════════════════════╝`,
+          `⚠️ Cannot remove ${userName} (UID: ${userID}) — user is a group admin.`,
           threadID
         );
       }
 
-      // Passed checks -> kick
       try {
         await api.removeUserFromGroup(userID, threadID);
-        // reset after successful kick
         userData.count = 0;
         return api.sendMessage(
-`🚨 User ${userName} (UID: ${userID}) has been removed due to repeated offenses.`,
+          `🚨 ${userName} (UID: ${userID}) removed due to repeated offenses.`,
           threadID
         );
       } catch (kickErr) {
         console.error("Kick error:", kickErr);
-        // if kick failed keep count at 2 to allow retry later
         userData.count = 2;
         return api.sendMessage(
-`⚠️ Failed to kick ${userName} (UID: ${userID}). Check bot permissions and try again.`,
+          `⚠️ Failed to kick ${userName} (UID: ${userID}). Check bot permissions.`,
           threadID
         );
       }
@@ -184,17 +146,48 @@ module.exports.run = async function ({ api, event, args }) {
   try {
     if (args[0] === "on") {
       antiGaliStatus = true;
-      return api.sendMessage("🎀 <\n𝐀𝐧𝐭𝐢-𝐠𝐚𝐥𝐢 𝐢𝐬 𝐧𝐨𝐰 𝐨𝐧", event.threadID);
+      return api.sendMessage("🎀 Anti-gali is now ON", event.threadID);
     } else if (args[0] === "off") {
       antiGaliStatus = false;
-      return api.sendMessage("🎀 <\n𝐀𝐧𝐭𝐢-𝐆𝐚𝐥𝐢 𝐬𝐲𝐬𝐭𝐞𝐦 𝐢𝐬 𝐧𝐨𝐰 𝐎𝐅𝐅", event.threadID);
+      return api.sendMessage("🎀 Anti-Gali system is now OFF", event.threadID);
+    } else if (!args[0]) {
+      // show skip-mode selection
+      const info = await api.sendMessage(
+        "🛡️ Anti-Gali Skip Mode\n\nReply with:\n1️⃣ - Skip detection for Admin only\n2️⃣ - Skip detection for Admin + Group Admin\n\n(Reply to this message with 1 or 2)",
+        event.threadID
+      );
+      global.client.handleReply.push({
+        name: this.config.name,
+        messageID: info.messageID,
+        author: event.senderID
+      });
+      return;
     } else {
-      return api.sendMessage("Usage: !antigali on / !antigali off", event.threadID);
+      return api.sendMessage("Usage: !antigali on / !antigali off / !antigali", event.threadID);
     }
   } catch (runErr) {
     console.error("Run command error:", runErr);
     try {
       await api.sendMessage("⚠️ Failed to run Anti-Gali command. Check bot logs.", event.threadID);
     } catch (e) { /* ignore */ }
+  }
+};
+
+module.exports.handleReply = async function ({ api, event, handleReply }) {
+  try {
+    if (event.senderID !== handleReply.author) return; // only original requester can select
+    const choice = event.body.trim();
+
+    if (choice === "1") {
+      skipMode = 1;
+      return api.sendMessage("✅ Skip mode set: Admin only will be skipped from anti-gali detection.", event.threadID);
+    } else if (choice === "2") {
+      skipMode = 2;
+      return api.sendMessage("✅ Skip mode set: Admin + Group Admin will be skipped from anti-gali detection.", event.threadID);
+    } else {
+      return api.sendMessage("❌ Invalid choice. Reply with 1 or 2.", event.threadID);
+    }
+  } catch (e) {
+    console.error("handleReply error:", e);
   }
 };
