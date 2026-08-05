@@ -50,35 +50,9 @@ module.exports = function ({ api, models }) {
   //////////////////////////////////////////////////////////////////////
   (async function () {
     try {
-      logger(global.getText('listen', 'startLoadEnvironment'), '[ DATABASE ]');
-      let threads = await Threads.getAll(),
-        users = await Users.getAll(['userID', 'name', 'data']),
-        currencies = await Currencies.getAll(['userID']);
-      for (const data of threads) {
-        const idThread = String(data.threadID);
-        global.data.allThreadID.push(idThread),
-          global.data.threadData.set(idThread, data['data'] || {}),
-          global.data.threadInfo.set(idThread, data.threadInfo || {});
-        if (data['data'] && data['data']['banned'] == !![])
-          global.data.threadBanned.set(idThread, { 'reason': data['data']['reason'] || '', 'dateAdded': data['data']['dateAdded'] || '' });
-        if (data['data'] && data['data']['commandBanned'] && data['data']['commandBanned']['length'] != 0)
-          global['data']['commandBanned']['set'](idThread, data['data']['commandBanned']);
-        if (data['data'] && data['data']['NSFW']) global['data']['threadAllowNSFW']['push'](idThread);
-      }
-      logger.loader(global.getText('listen', 'loadedEnvironmentThread'));
-      for (const dataU of users) {
-        const idUsers = String(dataU['userID']);
-        global.data['allUserID']['push'](idUsers);
-        if (dataU.name && dataU.name['length'] != 0) global.data.userName['set'](idUsers, dataU.name);
-        if (dataU.data && dataU.data.banned == 1) global.data['userBanned']['set'](idUsers, {
-          'reason': dataU['data']['reason'] || '', 'dateAdded': dataU['data']['dateAdded'] || ''
-        });
-        if (dataU['data'] && dataU.data['commandBanned'] && dataU['data']['commandBanned']['length'] != 0)
-          global['data']['commandBanned']['set'](idUsers, dataU['data']['commandBanned']);
-      }
-      for (const dataC of currencies) global.data.allCurrenciesID.push(String(dataC['userID']));
+      logger("On-demand dynamic data loading enabled! Skipping heavy startup database pre-loads.", '[ DATABASE ]');
     } catch (error) {
-        return logger.loader(global.getText('listen', 'failLoadEnvironment', error), 'error');
+        return logger.loader("Failed to configure dynamic loader environment", 'error');
     }
   }());
   
@@ -210,6 +184,9 @@ module.exports = function ({ api, models }) {
     }
 
     try {
+      // Run on-demand database registration / loading first to prevent any race conditions
+      await handleCreateDatabase({ event });
+
       const { threadID, author, image, type, logMessageType, logMessageBody, logMessageData } = event;
       var data_anti = JSON.parse(fs.readFileSync(global.anti, "utf8"));
 
@@ -276,10 +253,10 @@ module.exports = function ({ api, models }) {
       case "message":
       case "message_reply":
       case "message_unsend":
-        handleCreateDatabase({ event });
-        handleCommand({ event });
-        handleReply({ event });
-        handleCommandEvent({ event });
+        await handleCreateDatabase({ event });
+        await handleCommand({ event });
+        await handleReply({ event });
+        await handleCommandEvent({ event });
         break;
       // ── E2EE (end-to-end encrypted) messages ──────────────────────────────
       // threadID is a JID ("...@msgr" or "...@facebook.com"), which api.sendMessage
@@ -289,33 +266,35 @@ module.exports = function ({ api, models }) {
       // getThreadInfo(numericID) দিয়ে সব participant fetch করে patch করা হয়।
       case "e2ee_message":
       case "e2ee_message_reply":
-        handleCreateDatabase({ event });
+        await handleCreateDatabase({ event });
         event = await patchE2EEMentions(api, event);  // [RX-FCA] proxy
-        handleCommand({ event });
-        handleReply({ event });
-        handleCommandEvent({ event });
+        await handleCommand({ event });
+        await handleReply({ event });
+        await handleCommandEvent({ event });
         break;
       case "e2ee_message_unsend":
         // Normalize to the base type so command/module code that checks
         // event.type (e.g. resent.js's anti-unsend logic) works unchanged.
         event.type = "message_unsend";
-        handleCreateDatabase({ event });
+        await handleCreateDatabase({ event });
         event = await patchE2EEMentions(api, event);  // [RX-FCA] proxy
-        handleCommand({ event });
-        handleReply({ event });
-        handleCommandEvent({ event });
+        await handleCommand({ event });
+        await handleReply({ event });
+        await handleCommandEvent({ event });
         break;
       case "e2ee_message_edit":
-        handleCommandEvent({ event });
+        await handleCommandEvent({ event });
         break;
       // ─────────────────────────────────────────────────────────────────────
       case "event":
-        handleEvent({ event });
-        handleRefresh({ event });
+        await handleCreateDatabase({ event });
+        await handleEvent({ event });
+        await handleRefresh({ event });
         break;
       case "message_reaction":
       case "e2ee_message_reaction":
         if (event.type === "e2ee_message_reaction") event.type = "message_reaction";
+        await handleCreateDatabase({ event });
         {
           // Was the message being reacted to actually sent BY the bot?
           // - Normal threads: senderID on the reaction event is the
@@ -350,7 +329,7 @@ module.exports = function ({ api, models }) {
             api.unsendMessage(event.messageID)
           }
         }
-        handleReaction({ event });
+        await handleReaction({ event });
         break;
     }
     } catch (err) {
