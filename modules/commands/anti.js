@@ -5,7 +5,7 @@ module.exports.config = {
   credits: "rX",
   description: "Anti change Group info system",
   commandCategory: "Administrator",
-  usages: "anti [reply number]",
+  usages: "anti [reply number] | anti data add",
   cooldowns: 5,
   images: [],
   dependencies: {
@@ -13,17 +13,19 @@ module.exports.config = {
   },
 };
 
-const { readdirSync, readFileSync, writeFileSync, existsSync, unlinkSync } = require("fs-extra");
+const { readdirSync, existsSync, unlinkSync } = require("fs-extra");
 const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
+const { getAntiData, saveAntiData, reuploadImage } = require("../../utils/antiStore");
 
 module.exports.handleReply = async function ({ api, event, args, handleReply, Threads }) {
   const { senderID, threadID, messageID } = event;
   const { author, permssion } = handleReply;
   const timeDhaka = (require('moment-timezone')).tz('Asia/Dhaka').format('HH:mm:ss || DD/MM/YYYY');
-  const pathData = global.anti;
-  const dataAnti = JSON.parse(readFileSync(pathData, "utf8"));
+  // boxname / boximage / antiNickname / antiout now live in MongoDB
+  // (see utils/antiStore.js) instead of being read straight off disk.
+  const dataAnti = await getAntiData();
 
   if (author !== senderID) return api.sendMessage(`❎ You are not the user who called this command.`, threadID);
 
@@ -42,7 +44,7 @@ module.exports.handleReply = async function ({ api, event, args, handleReply, Th
           dataAnti.boxname.push({ threadID, name: threadName });
           api.sendMessage("☑️ Successfully ENABLED Anti-Group Name change.", threadID, messageID);
         }
-        writeFileSync(pathData, JSON.stringify(dataAnti, null, 4));
+        await saveAntiData(dataAnti);
         break;
       }
       case "2": {
@@ -54,12 +56,11 @@ module.exports.handleReply = async function ({ api, event, args, handleReply, Th
         } else {
           var threadInfo = await api.getThreadInfo(event.threadID);
           let url = threadInfo.imageSrc;
-          let response = await global.api.imgur(url);
-          let img = response.link;
+          let img = await reuploadImage(url);
           dataAnti.boximage.push({ threadID, url: img });
           api.sendMessage("☑️ Successfully ENABLED Anti-Group Image change.", threadID, messageID);
         }
-        writeFileSync(pathData, JSON.stringify(dataAnti, null, 4));
+        await saveAntiData(dataAnti);
         break;
       }
       case "3": {
@@ -73,7 +74,7 @@ module.exports.handleReply = async function ({ api, event, args, handleReply, Th
           dataAnti.antiNickname.push({ threadID, data: nickNames });
           api.sendMessage("☑️ Successfully ENABLED Anti-Nickname change.", threadID, messageID);
         }
-        writeFileSync(pathData, JSON.stringify(dataAnti, null, 4));
+        await saveAntiData(dataAnti);
         break;
       }
       case "4": {
@@ -86,7 +87,7 @@ module.exports.handleReply = async function ({ api, event, args, handleReply, Th
           antiout[threadID] = true;
           api.sendMessage("☑️ Successfully ENABLED Anti-Out (Auto Re-add).", threadID, messageID);
         }
-        writeFileSync(pathData, JSON.stringify(dataAnti, null, 4));
+        await saveAntiData(dataAnti);
         break;
       }
       case "5": {
@@ -161,7 +162,7 @@ module.exports.handleReply = async function ({ api, event, args, handleReply, Th
         const antiBoxname = dataAnti.boxname.find(item => item.threadID === threadID);
         const antiNickname = dataAnti.antiNickname.find(item => item.threadID === threadID);
         const status = (bool) => bool ? "ON" : "OFF";
-        return api.sendMessage(`[ ANTI SYSTEM STATUS ]\n────────────────────\n|› 1. Anti Namebox: ${status(antiBoxname)}\n|› 2. Anti Imagebox: ${status(antiImage)}\n|› 3. Anti Nickname: ${status(antiNickname)}\n|› 4. Anti Out: ${status(dataAnti.antiout[threadID])}\n────────────────────\n|› Maria Anti System - Protect your group!`, threadID);
+        return api.sendMessage(`ANTI SYSTEM STATUS\n1. Anti Namebox: ${status(antiBoxname)}\n2. Anti Imagebox: ${status(antiImage)}\n3. Anti Nickname: ${status(antiNickname)}\n4. Anti Out: ${status(dataAnti.antiout[threadID])}\n\nMaria Anti System - Protect your group!`, threadID);
       }
       default: {
         return api.sendMessage(`❎ The number you chose is not in the list.`, threadID);
@@ -170,11 +171,59 @@ module.exports.handleReply = async function ({ api, event, args, handleReply, Th
   }
 };
 
+// anti data add -> pulls the current group name & picture (same way boxinfo.js does)
+// and saves/refreshes it in the anti-system database (dataAnti.boxname / dataAnti.boximage).
+// This does NOT require the anti-name/anti-image lock to already be enabled — it just
+// (re)writes the stored reference data for this threadID.
+module.exports.saveBoxData = async function ({ api, event }) {
+  const { threadID, messageID } = event;
+
+  try {
+    const dataAnti = await getAntiData();
+
+    // Same source as boxinfo.js: threadInfo.threadName / threadInfo.imageSrc
+    const threadInfo = await api.getThreadInfo(threadID);
+    const groupName = threadInfo.threadName || "Unnamed Group";
+    const groupImage = threadInfo.imageSrc;
+
+    // Save / refresh name
+    const nameIndex = dataAnti.boxname.findIndex((item) => item.threadID === threadID);
+    if (nameIndex !== -1) dataAnti.boxname[nameIndex].name = groupName;
+    else dataAnti.boxname.push({ threadID, name: groupName });
+
+    // Save / refresh picture (re-hosted via imgur, same as the "2" toggle above)
+    let img = null;
+    if (groupImage) {
+      img = await reuploadImage(groupImage);
+      const imageIndex = dataAnti.boximage.findIndex((item) => item.threadID === threadID);
+      if (imageIndex !== -1) dataAnti.boximage[imageIndex].url = img;
+      else dataAnti.boximage.push({ threadID, url: img });
+    }
+
+    await saveAntiData(dataAnti);
+
+    return api.sendMessage(
+      `☑️ Box data saved to the database!\nName: ${groupName}\nPicture: ${img ? "Saved ✅" : "Not found ❌"}`,
+      threadID,
+      messageID
+    );
+  } catch (err) {
+    return api.sendMessage(`❎ Failed to save box data: ${err.message}`, threadID, messageID);
+  }
+};
+
 module.exports.run = async ({ api, event, args, permssion, Threads }) => {
   const { threadID, messageID, senderID } = event;
+
+  // "anti data add" — directly save current group name & picture into anti.json
+  if (args[0] && args[0].toLowerCase() === "data" && args[1] && args[1].toLowerCase() === "add") {
+    if (permssion < 1) return api.sendMessage("⚠️ You don't have enough permission to use this command.", threadID, messageID);
+    return module.exports.saveBoxData({ api, event });
+  }
+
   const threadSetting = (await Threads.getData(String(threadID))).data || {};
   const prefix = threadSetting.hasOwnProperty("PREFIX") ? threadSetting.PREFIX : global.config.PREFIX;
-  return api.sendMessage(`╭─────────────⭓\n│ Maria Anti-Change Group\n├─────⭔\n│ 1. anti namebox: Lock group name\n│ 2. anti boximage: Lock group image\n│ 3. anti nickname: Lock member nicknames\n│ 4. anti out: Prevent leaving group\n│ 5. anti emoji: Lock group emoji\n│ 6. anti theme: Lock group theme\n│ 7. anti qtv: Protect admin list\n│ 8. anti join: Prevent adding members\n│ 9. Check group anti status\n├────────⭔\n│ 📌 Reply with a number to toggle the mode status\n╰─────────────⭓`,
+  return api.sendMessage(`Maria Anti-Change Group\n\n1. anti namebox: Lock group name\n2. anti boximage: Lock group image\n3. anti nickname: Lock member nicknames\n4. anti out: Prevent leaving group\n5. anti emoji: Lock group emoji\n6. anti theme: Lock group theme\n7. anti qtv: Protect admin list\n8. anti join: Prevent adding members\n9. Check group anti status\n\nReply with a number to toggle the mode status\nOr type "${prefix}anti data add" to save current box name & picture into the database`,
     threadID, (error, info) => {
       if (error) {
         return api.sendMessage("❎ An error occurred!", threadID);
