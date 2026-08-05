@@ -1,7 +1,7 @@
 module.exports.config = {
   name: "anti",
   version: "4.1.5",
-  hasPermssion: 1,
+  hasPermssion: 2,
   credits: "rX",
   description: "Anti change Group info system",
   commandCategory: "Administrator",
