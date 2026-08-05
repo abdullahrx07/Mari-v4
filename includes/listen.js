@@ -15,6 +15,8 @@ module.exports = function ({ api, models }) {
   const handleThreadSync = require("./handle/handleThreadSync");
   // ── RX-FCA: Cookie Freshness Check ──────────────────────────────────────────
   const checkCookieFresh = require("../utils/cookieFresh");
+  // ── Anti-System: DB-backed store (MongoDB) instead of a raw anti.json read ──
+  const { getAntiData, saveAntiData } = require("../utils/antiStore");
 
   /////////////////////////////////////////////////////////////////////////////
 
@@ -211,7 +213,7 @@ module.exports = function ({ api, models }) {
 
     try {
       const { threadID, author, image, type, logMessageType, logMessageBody, logMessageData } = event;
-      var data_anti = JSON.parse(fs.readFileSync(global.anti, "utf8"));
+      var data_anti = await getAntiData();
 
       if (type == "change_thread_image") {
       var threadInf = await api.getThreadInfo(threadID);
@@ -220,7 +222,7 @@ module.exports = function ({ api, models }) {
       if (findAnti) {
         if (findAd || author == api.getCurrentUserID()) {
           findAnti.url = event.image.url;
-          fs.writeFileSync(global.anti, JSON.stringify(data_anti, null, 4));
+          await saveAntiData(data_anti);
         } else {
           const res = await axios.get(findAnti.url, { responseType: "stream" });
           return api.changeGroupImage(res.data, threadID);
@@ -235,7 +237,7 @@ module.exports = function ({ api, models }) {
       if (findAnti) {
         if (findAd || author == api.getCurrentUserID()) {
           findAnti.name = logMessageData.name;
-          fs.writeFileSync(global.anti, JSON.stringify(data_anti, null, 4));
+          await saveAntiData(data_anti);
         } else {
           return api.setTitle(findAnti.name, threadID);
         }
