@@ -8,10 +8,22 @@ const API_URL = "https://raw.githubusercontent.com/bruxa6t9/BRUXA-BOT-UTILITIES/
 const CACHE_DIR = path.join(__dirname, "cache");
 const apiKey = "bruxa-76acde6852d69cf0-2fbba28d5ea6f4a6";
 
-// Server e (hosting panel / minimal container) system font na thakle canvas text
-// blank/box hoye ashte pare. Bangla title thakle Bangla glyph support wala font lagbe.
-// Ekta .ttf bundle kore ei path e rekhe niche wala line uncomment kore dio:
-// GlobalFonts.registerFromPath(path.join(__dirname, "fonts", "NotoSans-Regular.ttf"), "sans-serif");
+// Server e kono system font na thakleo text jate render hoy, tai font file-ta
+// project-e bundle kore direct register kora hocche — system fontconfig-er upor
+// depend kore na, tai hosting panel/minimal container e-o guaranteed kaj korbe.
+// "fonts/NotoSans-Regular.ttf" — ei exact path e file-ta rakhte hobe.
+const FONT_PATH = path.join(__dirname, "wall", "NotoSans-Regular.ttf");
+const FONT_FAMILY = "NotoSans";
+
+try {
+	if (fs.existsSync(FONT_PATH)) {
+		GlobalFonts.registerFromPath(FONT_PATH, FONT_FAMILY);
+	} else {
+		console.warn(`[sing] Font file paoa jayni: ${FONT_PATH} — result-list e text ashbe na. fonts/NotoSans-Regular.ttf file-ta project-e bundle koro.`);
+	}
+} catch (err) {
+	console.error("[sing] Font register korte error:", err.message);
+}
 
 let cachedApiBase = null;
 
@@ -192,7 +204,7 @@ async function buildResultsImage(videos) {
 		// duration badge (bottom-right of thumbnail, like YouTube)
 		const durationText = v.timestamp || "";
 		if (durationText) {
-			ctx.font = "bold 13px sans-serif";
+			ctx.font = `bold 13px ${FONT_FAMILY}`;
 			const tw = ctx.measureText(durationText).width;
 			const bx = PADDING + THUMB_W - tw - 12;
 			const by = y + PADDING + THUMB_H - 22;
@@ -209,7 +221,7 @@ async function buildResultsImage(videos) {
 		ctx.arc(PADDING + 15, y + PADDING + 15, 15, 0, Math.PI * 2);
 		ctx.fill();
 		ctx.fillStyle = "#ffffff";
-		ctx.font = "bold 15px sans-serif";
+		ctx.font = `bold 15px ${FONT_FAMILY}`;
 		ctx.textAlign = "center";
 		ctx.textBaseline = "middle";
 		ctx.fillText(String(i + 1), PADDING + 15, y + PADDING + 16);
@@ -221,11 +233,11 @@ async function buildResultsImage(videos) {
 		const textMaxW = WIDTH - textX - PADDING;
 
 		ctx.fillStyle = "#ffffff";
-		ctx.font = "600 17px sans-serif";
+		ctx.font = `600 17px ${FONT_FAMILY}`;
 		const titleLines = wrapText(ctx, v.title, textX, y + PADDING + 20, textMaxW, 22, 2);
 
 		ctx.fillStyle = "#aaaaaa";
-		ctx.font = "13px sans-serif";
+		ctx.font = `13px ${FONT_FAMILY}`;
 		const meta = [v.author?.name, formatViews(v.views) ? `${formatViews(v.views)} views` : null, v.ago]
 			.filter(Boolean)
 			.join(" • ");
@@ -241,9 +253,9 @@ module.exports.config = {
 	name: "sing",
 	aliases: ["song"],
 	premium: false,
-	version: "3.2.0",
+	version: "3.3.0",
 	hasPermssion: 0,
-	credits: "Bruxa | Rakib Adil",
+	credits: "rX | api from Bruxa",
 	description: "search music by name..",
 	commandCategory: "music",
 	usages: "[song name]",
@@ -274,7 +286,7 @@ module.exports.run = async function ({ api, event, args, Users }) {
 			const info = await sendMessageAsync(
 				api,
 				{
-					body: `🔍 Results for "${query}"\n👉 Reply with a number (1-${top.length})`,
+					body: `🔍 Results for "${query}"\n\n❮    Reply with a number (1-${top.length})\n❯`,
 					attachment: fs.createReadStream(imageFile)
 				},
 				event.threadID
