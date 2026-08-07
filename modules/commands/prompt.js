@@ -1,0 +1,53 @@
+const axios = require("axios");
+const baseApi = "https://azadx69x-all-apis-top.vercel.app/api/prompt";
+
+module.exports.config = {
+  name: "prompt",
+  aliases: ["p"],
+  version: "0.0.5",
+  hasPermssion: 0,
+  credits: "Azadx69x",
+  description: "Reply to an image to generate an AI prompt",
+  commandCategory: "ai",
+  usages: "prompt (reply to an image)",
+  cooldowns: 3
+};
+
+module.exports.run = async function ({ api, event }) {
+  const { threadID, messageID, messageReply } = event;
+
+  if (
+    !messageReply ||
+    !messageReply.attachments ||
+    messageReply.attachments.length === 0 ||
+    !messageReply.attachments[0].url
+  ) {
+    return api.sendMessage("⚠️ Please reply to an image to generate a prompt.", threadID, messageID);
+  }
+
+  try {
+    api.setMessageReaction("⏳", messageID, () => {}, true);
+
+    const imageUrl = messageReply.attachments[0].url;
+    const apiUrl = `${baseApi}?url=${encodeURIComponent(imageUrl)}`;
+
+    const response = await axios.get(apiUrl);
+    const json = response.data;
+
+    if (!json || !json.data || !json.data.prompt) {
+      throw new Error("❌ No prompt found.");
+    }
+
+    const promptText = json.data.prompt;
+
+    await api.sendMessage(`🐦 Generated Prompt:\n\n${promptText}`, threadID, messageID);
+
+    api.setMessageReaction("✅", messageID, () => {}, true);
+  } catch (e) {
+    api.setMessageReaction("❌", messageID, () => {}, true);
+    let msg = "Error while generating prompt.";
+    if (e.response?.data?.error) msg = e.response.data.error;
+    else if (e.message) msg = e.message;
+    api.sendMessage(msg, threadID, messageID);
+  }
+};
