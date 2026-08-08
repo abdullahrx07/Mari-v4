@@ -483,6 +483,23 @@ loginApiData.setOptions(global.config.FCAOption)
     _0x27b45c
     global.handleListen = loginApiData.listenMqtt(listenerCallback)
     global.client.api = loginApiData
+
+    // Refresh MQTT listener every 1 hour to prevent 5-6 hour disconnection (dstr refresh system)
+    setInterval(() => {
+      if (typeof global.handleListen === 'function') {
+        try {
+          global.handleListen(); // Destroy/stop the existing listener
+        } catch (err) {
+          logger('Error stopping listener during dstr refresh: ' + (err.message || err), '[ LISTENER-REFRESH-ERROR ]');
+        }
+      }
+      try {
+        global.handleListen = loginApiData.listenMqtt(listenerCallback);
+        logger(global.getText('mirai', 'refreshListen'), '[ SYSTEM ]');
+      } catch (err) {
+        logger('Error restarting listener during dstr refresh: ' + (err.message || err), '[ LISTENER-REFRESH-ERROR ]');
+      }
+    }, 1 * 60 * 60 * 1000); // 1 hour
   })
 }
 

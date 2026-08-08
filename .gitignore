@@ -3,3 +3,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.temp
+modules/commands/temp_admin_time.json
+modules/commands/rx/premium.json
+appstate.json
