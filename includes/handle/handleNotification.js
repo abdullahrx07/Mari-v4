@@ -16,7 +16,15 @@ module.exports = function ({ api }) {
 try {
 
 api.httpPost("https://www.facebook.com/api/graphql/", form, (error, response) => {
-            const data = JSON.parse(response).data.viewer;
+            if (error || !response) return; // httpPost failed — nothing to parse
+            let parsed;
+            try {
+                parsed = JSON.parse(response);
+            } catch (e) {
+                return; // response wasn't valid JSON (e.g. FB returned an HTML/error page)
+            }
+            const data = parsed && parsed.data && parsed.data.viewer;
+            if (!data || !data.notifications_page) return;
             const getMinutesOfTime = (d1, d2) => Math.ceil((d2.getTime() - d1.getTime()) / (60 * 1000));
 
             for (const notification of data.notifications_page.edges) {
