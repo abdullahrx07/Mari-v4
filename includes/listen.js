@@ -169,8 +169,38 @@ module.exports = function ({ api, models }) {
 
   const eventTimestamps = [];
 
+  // ── RX-FCA: Duplicate-event guard ────────────────────────────────────────
+  // Safety net against the hourly MQTT listener refresh (main.js) briefly
+  // running two live sockets at once — if that ever happens, the same event
+  // arrives twice and would otherwise be processed (and replied to) twice.
+  const _seenEventKeys = new Map(); // key -> timestamp
+  const _DEDUPE_WINDOW_MS = 15000;
+  const _pruneSeenEventKeys = (now) => {
+    for (const [key, ts] of _seenEventKeys) {
+      if (now - ts > _DEDUPE_WINDOW_MS) _seenEventKeys.delete(key);
+    }
+  };
+  const _isDuplicateEvent = (event, now) => {
+    const key = event.messageID
+      ? `${event.type}:${event.messageID}`
+      : `${event.type}:${event.threadID}:${event.senderID}:${event.timestamp}:${(event.body || '').slice(0, 50)}`;
+    _pruneSeenEventKeys(now);
+    if (_seenEventKeys.has(key)) return true;
+    _seenEventKeys.set(key, now);
+    return false;
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   return async (event) => {
     const now = Date.now();
+
+    if (_isDuplicateEvent(event, now)) {
+      try {
+        rxLog.warn(`Duplicate event skipped (type: ${event.type})`, '〘 DEDUPE 〙');
+      } catch (err) { /* Ignored */ }
+      return;
+    }
+
     eventTimestamps.push(now);
     while (eventTimestamps.length > 0 && eventTimestamps[0] < now - 10000) {
       eventTimestamps.shift();
