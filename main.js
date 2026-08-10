@@ -13,7 +13,7 @@ let login = null;
 try {
 	login = require('@rxabdullah/xdi-fca');
 } catch (e) {
-	logger('Failed to load ./includes/Fca — Facebook login is disabled: ' + e.message, '[ LOGIN-DISABLED ]');
+	logger('Failed to load Fca — Facebook login is disabled: ' + e.message, '[ LOGIN-DISABLED ]');
 }
 const moment = require("moment-timezone");
 const timeStart = Date.now();
@@ -485,20 +485,39 @@ loginApiData.setOptions(global.config.FCAOption)
     global.client.api = loginApiData
 
     // Refresh MQTT listener every 1 hour to prevent 5-6 hour disconnection (dstr refresh system)
+    // NOTE: old listener stop() can be async under the hood, so we guard against
+    // overlapping refreshes and give the old socket time to fully close before
+    // opening a new one — otherwise both old+new sockets stay live briefly and
+    // every incoming message gets delivered (and processed/replied to) twice.
+    let _isRefreshingListener = false;
     setInterval(() => {
-      if (typeof global.handleListen === 'function') {
+      if (_isRefreshingListener) {
+        logger('Skipped listener refresh: previous refresh still in progress', '[ LISTENER-REFRESH ]');
+        return;
+      }
+      _isRefreshingListener = true;
+
+      const oldHandleListen = global.handleListen;
+      if (typeof oldHandleListen === 'function') {
         try {
-          global.handleListen(); // Destroy/stop the existing listener
+          oldHandleListen(); // Destroy/stop the existing listener
         } catch (err) {
           logger('Error stopping listener during dstr refresh: ' + (err.message || err), '[ LISTENER-REFRESH-ERROR ]');
         }
       }
-      try {
-        global.handleListen = loginApiData.listenMqtt(listenerCallback);
-        logger(global.getText('mirai', 'refreshListen'), '[ SYSTEM ]');
-      } catch (err) {
-        logger('Error restarting listener during dstr refresh: ' + (err.message || err), '[ LISTENER-REFRESH-ERROR ]');
-      }
+
+      // Give the old MQTT socket a moment to actually finish closing before
+      // opening a new connection, so we never have two live listeners at once.
+      setTimeout(() => {
+        try {
+          global.handleListen = loginApiData.listenMqtt(listenerCallback);
+          logger(global.getText('mirai', 'refreshListen'), '[ SYSTEM ]');
+        } catch (err) {
+          logger('Error restarting listener during dstr refresh: ' + (err.message || err), '[ LISTENER-REFRESH-ERROR ]');
+        } finally {
+          _isRefreshingListener = false;
+        }
+      }, 3000);
     }, 1 * 60 * 60 * 1000); // 1 hour
   })
 }
