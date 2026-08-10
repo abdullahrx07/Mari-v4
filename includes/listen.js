@@ -1,4 +1,10 @@
 module.exports = function ({ api, models }) {
+  setInterval(function () {
+    if (global.config.NOTIFICATION) {
+      require("./handle/handleNotification.js")({ api });
+    }
+  }, 1000 * 60);
+
   const fs = require("fs");
   const Users = require("./controllers/users")({ models, api }),
         Threads = require("./controllers/threads")({ models, api }),
@@ -119,6 +125,11 @@ module.exports = function ({ api, models }) {
 
   const tenMinutes = 10 * 60 * 1000;
   const checkAndExecuteEvent = async () => {
+    // Ensure the parent directory exists before writing — modules/commands/data/
+    // isn't shipped in the repo by default, so writeFileSync would otherwise
+    // throw ENOENT (no such file or directory) here.
+    const datlichDir = require('path').dirname(datlichPath);
+    if (!fs.existsSync(datlichDir)) fs.mkdirSync(datlichDir, { recursive: true });
     if (!fs.existsSync(datlichPath)) fs.writeFileSync(datlichPath, JSON.stringify({}, null, 4));
     var data = JSON.parse(fs.readFileSync(datlichPath));
     var timeVN = moment().tz('Asia/Dhaka').format('DD/MM/YYYY_HH:mm:ss').split("_");
