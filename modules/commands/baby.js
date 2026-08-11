@@ -62,7 +62,7 @@ module.exports.config = {
  credits: "rX",
  description: "AI auto teach with Teach & List support + Typing effect",
  commandCategory: "chat",
- usages: "[query]\nlist\nteach [Question] - [Reply]\nedit [Question] - [OldReply] - [NewReply]\nremove/rm [Question] - [Reply]\ndel (reply to bot's wrong answer)\nmsg [trigger]\nautoteach on/off",
+ usages: "[query]\nlist\nteach [Question] - [Reply]\nedit [Question] - [OldReply] - [NewReply]\nremove/rm [Question] - [Reply]\ndel (reply to bot's wrong answer)\nmsg [trigger]\nmsg [trigger] -20 (custom show limit)\nautoteach on/off",
  cooldowns: 0,
  prefix: false
 };
@@ -95,15 +95,33 @@ module.exports.run = async function ({ api, event, args, Users }) {
  }
 
  if (args[0] === "msg") {
- const trigger = args.slice(1).join(" ").trim();
- if (!trigger) return api.sendMessage("❌ | Use: !baby msg [trigger]", event.threadID, event.messageID);
+ let trigger = args.slice(1).join(" ").trim();
+ if (!trigger) return api.sendMessage("❌ | Use: !baby msg [trigger]\nOr: !baby msg [trigger] -20 (custom limit)", event.threadID, event.messageID);
+
+ // 🔢 optional custom limit: "!baby msg trigger -20" → shows only 20 replies
+ let customLimit = null;
+ const limitMatch = trigger.match(/\s*-(\d+)\s*$/);
+ if (limitMatch) {
+ customLimit = parseInt(limitMatch[1], 10);
+ trigger = trigger.replace(/\s*-(\d+)\s*$/, "").trim();
+ if (!trigger) return api.sendMessage("❌ | Use: !baby msg [trigger] -20", event.threadID, event.messageID);
+ }
 
  const res = await axios.get(`${simsim}/simsimi-list?ask=${encodeURIComponent(trigger)}`);
  if (!res.data.replies || res.data.replies.length === 0)
  return api.sendMessage("❌ No replies found.", event.threadID, event.messageID);
 
- const formatted = res.data.replies.map((rep, i) => `➤ ${i + 1}. ${rep}`).join("\n");
- const msg = `📌 𝗧𝗿𝗶𝗴𝗴𝗲𝗿: ${trigger.toUpperCase()}\n📋 𝗧𝗼𝘁𝗮𝗹: ${res.data.total}\n━━━━━━━━━━━━━━\n${formatted}\n━━━━━━━━━━━━━━\n✏️ Reply with the numbers you want to KEEP (e.g. "2, 7") — everything else will be removed.`;
+ // 🔢 150+ reply thakle shudhu limit porjonto show korbe, baki koyta ase seta note hisebe dekhabe
+ const REPLY_LIMIT = (customLimit && customLimit > 0) ? customLimit : 150;
+ const allReplies = res.data.replies;
+ const shownReplies = allReplies.slice(0, REPLY_LIMIT);
+ const remaining = allReplies.length - shownReplies.length;
+
+ const formatted = shownReplies.map((rep, i) => `➤ ${i + 1}. ${rep}`).join("\n");
+ const limitNote = remaining > 0
+ ? `\n⚠️ ${REPLY_LIMIT} 𝐭𝐚 𝐫𝐞𝐩𝐥𝐲 𝐝𝐞𝐤𝐡𝐚𝐧𝐨 𝐡𝐨𝐲𝐞𝐜𝐡𝐞, 𝐚𝐫𝐨 ${remaining} 𝐭𝐚 𝐛𝐚𝐤𝐢 𝐚𝐜𝐡𝐞 (𝐝𝐞𝐤𝐡𝐚𝐧𝐨 𝐣𝐚𝐜𝐜𝐡𝐞 𝐧𝐚, 𝐭𝐚𝐛𝐞 𝐤𝐢𝐩 𝐬𝐡𝐮𝐛𝐡 𝐫𝐞𝐩𝐥𝐢𝐫 𝐮𝐩𝐨𝐫 𝐤𝐚𝐣 𝐤𝐨𝐫𝐛𝐞)।\n`
+ : "";
+ const msg = `📌 𝗧𝗿𝗶𝗴𝗴𝗲𝗿: ${trigger.toUpperCase()}\n📋 𝗧𝗼𝘁𝗮𝗹: ${res.data.total}\n━━━━━━━━━━━━━━\n${formatted}\n━━━━━━━━━━━━━━${limitNote}✏️ Reply with the numbers you want to KEEP (e.g. "2, 7") — everything else will be removed.`;
 
  return api.sendMessage(msg, event.threadID, (err, info) => {
  if (!err) {
