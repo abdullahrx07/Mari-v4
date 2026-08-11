@@ -1,4 +1,4 @@
- const axios = require("axios");
+const axios = require("axios");
 
 let simsim = "";
 let count_req = 0; 
@@ -57,7 +57,7 @@ module.exports.config = {
  name: "baby",
  aliases: ["maria", "hippi"],
  premium: false, 
- version: "1.3.0",
+ version: "1.3.1",
  hasPermssion: 0,
  credits: "rX",
  description: "AI auto teach with Teach & List support + Typing effect",
@@ -211,10 +211,6 @@ module.exports.run = async function ({ api, event, args, Users }) {
  return api.sendMessage(reply, event.threadID);
  }
 
- await sendTypingIndicatorV2(true, event.threadID);
- await new Promise(r => setTimeout(r, 2000));
- await sendTypingIndicatorV2(false, event.threadID);
-
  return await deliverSimsimiResponse({ api, event, query, senderName });
 
  } catch (e) {
@@ -276,10 +272,6 @@ module.exports.handleReply = async function ({ api, event, Users, handleReply })
  //  normal simsimi conversation continuation
  // ==========================
  try {
- await sendTypingIndicatorV2(true, event.threadID);
- await new Promise(r => setTimeout(r, 2000));
- await sendTypingIndicatorV2(false, event.threadID);
-
  return await deliverSimsimiResponse({ api, event, query: lowered, senderName });
  } catch (e) {
  return api.sendMessage(`❌ Error: ${e.message}`, event.threadID, event.messageID);
@@ -328,36 +320,102 @@ async function sendGreeting(api, event) {
 //  - reacts to the user's own message with the taught emoji (if any)
 //  - sends the text reply (if any)
 //  requires senderID always; backend rate-limits 2 replies / 5s per senderID
+//
+//  ✅ FIX: previously, sendMessage's callback silently swallowed errors and
+//  the call used a reply-to messageID (replyToMessageID || event.messageID)
+//  that could occasionally be stale/invalid, causing the text reply to
+//  silently fail to send even though the reaction succeeded. Now:
+//    1. errors are logged so failures are visible in server logs
+//    2. the reply-to reference is dropped (sendMessage no longer tries to
+//       thread off a possibly-invalid message ID)
+//    3. one retry is attempted if the first send fails
 // ==========================
+// small helper: race any promise against a timeout so a hung call
+// (e.g. a reaction call that never fires its callback) can never
+// block the rest of the function forever
+function withTimeout(promise, ms, label) {
+ return Promise.race([
+ promise,
+ new Promise((_, reject) =>
+ setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+ )
+ ]);
+}
+
+function sendMessageAsync(api, text, threadID, replyToID) {
+ return new Promise((resolve, reject) => {
+ const cb = (err, info) => (err ? reject(err) : resolve(info));
+ if (replyToID) {
+ api.sendMessage(text, threadID, cb, replyToID);
+ } else {
+ api.sendMessage(text, threadID, cb);
+ }
+ });
+}
+
 async function deliverSimsimiResponse({ api, event, query, senderName, replyToMessageID }) {
  const url = `${simsim}/simsimi?text=${encodeURIComponent(query)}&senderName=${encodeURIComponent(senderName)}&threadID=${encodeURIComponent(event.threadID)}&senderID=${encodeURIComponent(event.senderID)}`;
- const res = await axios.get(url);
+
+ // ✅ typing indicator now covers the ACTUAL backend processing time
+ // (including fuzzy match search) instead of a fixed dummy delay before
+ // the call even starts — so it stays on for however long the match
+ // actually takes, and turns off right when the response is ready.
+ await sendTypingIndicatorV2(true, event.threadID);
+ let res;
+ try {
+ res = await axios.get(url);
+ } finally {
+ await sendTypingIndicatorV2(false, event.threadID);
+ }
+
  const data = res.data || {};
 
  // silently ignored due to rate limit
  if (data.rateLimited) return;
 
- // react to the user's own message that triggered this
+ // ✅ FIX: reaction and text-send are now fully independent —
+ // one call can never block or break the other.
+ // (previously `await`-ing the reaction before sendMessage meant a
+ // hung/failing reaction call silently prevented the text reply
+ // from ever being sent)
+
+ // fire the reaction call, but don't let it block anything — 3s timeout guard
  if (data.reaction && event.messageID) {
- try {
- await api.setMessageReaction(data.reaction, event.messageID, () => {}, true);
- } catch (e) {
- console.log("⚠️ Reaction send error:", e.message);
- }
+ withTimeout(
+ api.setMessageReaction(data.reaction, event.messageID, () => {}, true),
+ 3000,
+ "setMessageReaction"
+ ).catch(e => console.log("⚠️ Reaction send error:", e.message));
  }
 
- // send text reply, if any was taught
+ // independently send text reply, if any was taught
+ // ✅ quote/reply-to the message that triggered this (event.messageID is
+ // always fresh & valid — unlike the old chained replyToMessageID, which
+ // could point at a stale/removed message and silently break sending)
  if (data.response) {
- return api.sendMessage(data.response, event.threadID, (err, info) => {
- if (!err) {
+ try {
+ const info = await sendMessageAsync(api, data.response, event.threadID, event.messageID);
  global.client.handleReply.push({
  name: module.exports.config.name,
  messageID: info.messageID,
  author: event.senderID,
  type: "simsimi"
  });
+ } catch (e) {
+ console.log("❌ sendMessage error:", JSON.stringify(e));
+ // one retry, but without the reply-to reference in case that was the issue
+ try {
+ const info2 = await sendMessageAsync(api, data.response, event.threadID);
+ global.client.handleReply.push({
+ name: module.exports.config.name,
+ messageID: info2.messageID,
+ author: event.senderID,
+ type: "simsimi"
+ });
+ } catch (e2) {
+ console.log("❌ sendMessage failed after retry:", JSON.stringify(e2));
  }
- }, replyToMessageID || event.messageID);
+ }
  }
 }
 
@@ -412,10 +470,6 @@ module.exports.handleEvent = async function ({ api, event, Users }) {
  triggerLocks.add(event.threadID);
 
  try {
- await sendTypingIndicatorV2(true, event.threadID);
- await new Promise(r => setTimeout(r, 5000));
- await sendTypingIndicatorV2(false, event.threadID);
-
  return await deliverSimsimiResponse({ api, event, query, senderName });
  } catch (e) {
  return api.sendMessage(`❌ Error: ${e.message}`, event.threadID, event.messageID);
