@@ -222,6 +222,32 @@ module.exports.handleReply = async function ({ api, event, Users, handleReply })
  const senderName = await Users.getNameUser(event.senderID);
  const text = event.body?.trim();
  const lowered = text?.toLowerCase();
+
+ // ==========================
+ //  Attachment reactions — replying to bot with image/video/voice
+ //  gets an auto reaction based on attachment type.
+ //  Checked BEFORE the text-required return, since attachments
+ //  (especially voice notes) often come with no caption/body.
+ // ==========================
+ if (event.attachments && event.attachments.length > 0) {
+ const type = event.attachments[0].type;
+ let reaction = null;
+
+ if (type === "photo") reaction = "🫩"; // image
+ else if (type === "animated_image") reaction = "😵‍💫"; // gif
+ else if (type === "video") reaction = "🤔"; // video
+ else if (type === "audio") reaction = "🤕"; // voice message
+
+ if (reaction) {
+ try {
+ await api.setMessageReaction(reaction, event.messageID, () => {}, true);
+ } catch (e) {
+ console.log("⚠️ Attachment reaction error:", e.message);
+ }
+ return; // attachment handled — skip the text/simsimi flow below
+ }
+ }
+
  if (!text || !simsim) return;
 
  // ==========================
