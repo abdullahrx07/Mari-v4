@@ -41,16 +41,28 @@ async function sendTypingIndicatorV2(sendTyping, threadID) {
  } catch {}
 })();
 
+// 🤖 bot's own UID cache — resolved lazily from api.getCurrentUserID()
+let botUID = null;
+function getBotUID(api) {
+ if (botUID) return botUID;
+ try {
+ if (typeof api.getCurrentUserID === "function") {
+ botUID = api.getCurrentUserID();
+ }
+ } catch {}
+ return botUID;
+}
+
 module.exports.config = {
  name: "baby",
  aliases: ["maria", "hippi"],
  premium: false, 
- version: "1.1.0",
+ version: "1.2.1",
  hasPermssion: 0,
  credits: "rX",
  description: "AI auto teach with Teach & List support + Typing effect",
  commandCategory: "chat",
- usages: "[query]",
+ usages: "[query]\nlist\nteach [Question] - [Reply]\nedit [Question] - [OldReply] - [NewReply]\nremove/rm [Question] - [Reply]\ndel (reply to bot's wrong answer)\nmsg [trigger]\nautoteach on/off",
  cooldowns: 0,
  prefix: false
 };
@@ -91,8 +103,19 @@ module.exports.run = async function ({ api, event, args, Users }) {
  return api.sendMessage("❌ No replies found.", event.threadID, event.messageID);
 
  const formatted = res.data.replies.map((rep, i) => `➤ ${i + 1}. ${rep}`).join("\n");
- const msg = `📌 𝗧𝗿𝗶𝗴𝗴𝗲𝗿: ${trigger.toUpperCase()}\n📋 𝗧𝗼𝘁𝗮𝗹: ${res.data.total}\n━━━━━━━━━━━━━━\n${formatted}`;
- return api.sendMessage(msg, event.threadID, event.messageID);
+ const msg = `📌 𝗧𝗿𝗶𝗴𝗴𝗲𝗿: ${trigger.toUpperCase()}\n📋 𝗧𝗼𝘁𝗮𝗹: ${res.data.total}\n━━━━━━━━━━━━━━\n${formatted}\n━━━━━━━━━━━━━━\n✏️ Reply with the numbers you want to KEEP (e.g. "2, 7") — everything else will be removed.`;
+
+ return api.sendMessage(msg, event.threadID, (err, info) => {
+ if (!err) {
+ global.client.handleReply.push({
+ name: module.exports.config.name,
+ messageID: info.messageID,
+ author: event.senderID,
+ type: "msgSelect",
+ trigger
+ });
+ }
+ }, event.messageID);
  }
 
  if (args[0] === "teach") {
@@ -125,6 +148,14 @@ module.exports.run = async function ({ api, event, args, Users }) {
  return api.sendMessage(res.data.message, event.threadID, event.messageID);
  }
 
+ if (args[0] === "del") {
+ return api.sendMessage(
+ "❌ | Reply to the bot's wrong answer message with \"!baby del\" to delete it.",
+ event.threadID,
+ event.messageID
+ );
+ }
+
  if (!query) {
  const texts = ["Hey baby 💖", "Yes, I'm here 😘"];
  const reply = texts[Math.floor(Math.random() * texts.length)];
@@ -152,17 +183,65 @@ module.exports.run = async function ({ api, event, args, Users }) {
  }
 };
 
-module.exports.handleReply = async function ({ api, event, Users }) {
+module.exports.handleReply = async function ({ api, event, Users, handleReply }) {
  const senderName = await Users.getNameUser(event.senderID);
- const text = event.body?.toLowerCase();
+ const text = event.body?.trim();
+ const lowered = text?.toLowerCase();
  if (!text || !simsim) return;
 
+ // ==========================
+ //  !baby del  — reply to bot's wrong answer to delete it
+ // ==========================
+ if (lowered === "del" || lowered === "!baby del") {
+ try {
+ const originalReply = handleReply?.body; // bot's original sent message text
+ if (!originalReply) {
+ return api.sendMessage("❌ Couldn't read the original message to delete.", event.threadID, event.messageID);
+ }
+
+ const res = await axios.get(`${simsim}/deleteByReply?reply=${encodeURIComponent(originalReply)}`);
+ return api.sendMessage(res.data.message, event.threadID, event.messageID);
+ } catch (e) {
+ return api.sendMessage(`❌ Failed to delete: ${e.message}`, event.threadID, event.messageID);
+ }
+ }
+
+ // ==========================
+ //  !baby msg selection — "keep these numbers" reply
+ // ==========================
+ if (handleReply?.type === "msgSelect") {
+ // only original command caller can respond
+ if (event.senderID !== handleReply.author) return;
+
+ const numbers = text
+ .split(",")
+ .map(n => parseInt(n.trim(), 10))
+ .filter(n => Number.isInteger(n));
+
+ if (numbers.length === 0) {
+ return api.sendMessage("❌ Send numbers like: 2, 7", event.threadID, event.messageID);
+ }
+
+ try {
+ const res = await axios.post(`${simsim}/keepOnly`, {
+ ask: handleReply.trigger,
+ keepIndexes: numbers
+ });
+ return api.sendMessage(res.data.message, event.threadID, event.messageID);
+ } catch (e) {
+ return api.sendMessage(`❌ Failed to update: ${e.message}`, event.threadID, event.messageID);
+ }
+ }
+
+ // ==========================
+ //  normal simsimi conversation continuation
+ // ==========================
  try {
  await sendTypingIndicatorV2(true, event.threadID);
  await new Promise(r => setTimeout(r, 2000));
  await sendTypingIndicatorV2(false, event.threadID);
 
- const res = await axios.get(`${simsim}/simsimi?text=${encodeURIComponent(text)}&senderName=${encodeURIComponent(senderName)}`);
+ const res = await axios.get(`${simsim}/simsimi?text=${encodeURIComponent(lowered)}&senderName=${encodeURIComponent(senderName)}`);
  return api.sendMessage(res.data.response, event.threadID, (err, info) => {
  if (!err) {
  global.client.handleReply.push({
@@ -178,20 +257,7 @@ module.exports.handleReply = async function ({ api, event, Users }) {
  }
 };
 
-module.exports.handleEvent = async function ({ api, event, Users }) {
- const text = event.body?.toLowerCase().trim();
- if (!text || !simsim) return;
-
- const senderName = await Users.getNameUser(event.senderID);
- const triggers = ["baby", "bby", "xan", "bbz", "mari", "মারিয়া"];
-
- if (triggers.includes(text)) {
- // 🔒 typing chola obosthay same thread theke abar trigger asle ignore
- if (triggerLocks.has(event.threadID)) return;
- triggerLocks.add(event.threadID);
-
- try {
- const replies = [
+const greetingReplies = [
  "𝐀𝐬𝐬𝐚𝐥𝐚𝐦𝐮 𝐰𝐚𝐥𝐚𝐢𝐤𝐮𝐦 ♥",
  "বলেন sir__😌",
  "𝐁𝐨𝐥𝐨 𝐣𝐚𝐧 𝐤𝐢 𝐤𝐨𝐫𝐭𝐞 𝐩𝐚𝐫𝐢 𝐭𝐨𝐦𝐫 𝐣𝐨𝐧𝐧𝐨 🐸",
@@ -205,9 +271,12 @@ module.exports.handleEvent = async function ({ api, event, Users }) {
  "আম গাছে আম নাই ঢিল কেন মারো, তোমার সাথে প্রেম নাই বেবি কেন ডাকো 😒🐸",
  "কি হলো, মিস টিস করচ্ছো নাকি 🤣",
  "𝐓𝐫𝐮𝐬𝐭 𝐦𝐞 𝐢𝐚𝐦 𝐦𝐚𝐫ɪ𝐚 🧃",
- "𝐇ᴇʏ 𝐗ᴀɴ 𝐈’ᴍ 𝐌𝐚𝐫ɪ𝐚 𝐁𝐚𝐛𝐲✨"
- ];
- const reply = replies[Math.floor(Math.random() * replies.length)];
+ "𝐇ᴇʏ 𝐗ᴀɴ 𝐈'ᴍ 𝐌𝐚𝐫ɪ𝐚 𝐁𝐚𝐛𝐲✨"
+];
+
+// shared greeting sender — used for bare-word trigger AND bot mentions
+async function sendGreeting(api, event) {
+ const reply = greetingReplies[Math.floor(Math.random() * greetingReplies.length)];
 
  await sendTypingIndicatorV2(true, event.threadID);
  await new Promise(r => setTimeout(r, 5000));
@@ -223,6 +292,44 @@ module.exports.handleEvent = async function ({ api, event, Users }) {
  });
  }
  });
+}
+
+// checks event.mentions (standard fca-style map: { "<uid>": "name", ... }) for bot's own uid
+function isBotMentioned(event, uid) {
+ if (!uid || !event.mentions) return false;
+ return Object.prototype.hasOwnProperty.call(event.mentions, uid);
+}
+
+module.exports.handleEvent = async function ({ api, event, Users }) {
+ const text = event.body?.toLowerCase().trim();
+ if (!simsim) return;
+
+ const senderName = await Users.getNameUser(event.senderID);
+ const triggers = ["baby", "bby", "xan", "bbz", "mari", "মারিয়া"];
+ const uid = getBotUID(api);
+
+ // ==========================
+ //  Bot mentioned directly — always greeting, regardless of extra text
+ // ==========================
+ if (isBotMentioned(event, uid)) {
+ if (triggerLocks.has(event.threadID)) return;
+ triggerLocks.add(event.threadID);
+ try {
+ return await sendGreeting(api, event);
+ } finally {
+ triggerLocks.delete(event.threadID);
+ }
+ }
+
+ if (!text) return;
+
+ if (triggers.includes(text)) {
+ // 🔒 typing chola obosthay same thread theke abar trigger asle ignore
+ if (triggerLocks.has(event.threadID)) return;
+ triggerLocks.add(event.threadID);
+
+ try {
+ return await sendGreeting(api, event);
  } finally {
  triggerLocks.delete(event.threadID);
  }
