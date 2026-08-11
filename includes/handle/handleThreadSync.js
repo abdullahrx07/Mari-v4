@@ -33,9 +33,18 @@ function fetchThreadList(api, limit) {
   return new Promise((resolve) => {
     try {
       api.getThreadList(limit, null, [], (err, result) => {
-        resolve(err ? [] : (result || []));
+        if (err) {
+          // Real error ta ekhon console-e dekha jabe — silently swallow kora hocche na ar
+          rxLog.error(
+            'getThreadList failed: ' + (err && (err.error || err.message || JSON.stringify(err))),
+            '〘 THREAD-SYNC 〙'
+          );
+          return resolve([]);
+        }
+        resolve(result || []);
       });
-    } catch (_) {
+    } catch (e) {
+      rxLog.error('getThreadList threw: ' + (e && e.message || e), '〘 THREAD-SYNC 〙');
       resolve([]);
     }
   });
