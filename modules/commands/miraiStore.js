@@ -623,8 +623,23 @@ module.exports.config = {
   description: "MiraiBot Store — Search, AutoUpdate, Install, Upload, AutoSync",
   commandCategory: "system",
   usages: "[list|install|upload|search|author|cat|trending|like|sync|delete|n]",
-  cooldowns: 3
+  cooldowns: 3,
+  autoSync: true
 };
+
+// MiraiBot has no onLoad — run startup tasks at module load time
+setTimeout(() => {
+  maybeAutoUpdate(null, null).catch(() => {});
+  setInterval(() => { maybeAutoUpdate(null, null).catch(() => {}); }, UPDATE_CHECK_INTERVAL);
+}, 6000);
+
+if (module.exports.config?.autoSync) {
+  const ONE_DAY = 1000 * 60 * 60 * 24;
+  setTimeout(() => {
+    runAutoSync().catch(() => {});
+    setInterval(() => { runAutoSync().catch(() => {}); }, ONE_DAY);
+  }, 8000);
+}
 
 module.exports.handleReply = async function ({ api, event, handleReply: Reply }) {
   const { threadID, body, senderID } = event;
