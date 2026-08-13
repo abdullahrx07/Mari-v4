@@ -14,42 +14,33 @@ module.exports = function ({ api }) {
         })
     };
 try {
-
 api.httpPost("https://www.facebook.com/api/graphql/", form, (error, response) => {
-            if (error || !response) return; // httpPost failed — nothing to parse
-            let parsed;
-            try {
-                parsed = JSON.parse(response);
-            } catch (e) {
-                return; // response wasn't valid JSON (e.g. FB returned an HTML/error page)
-            }
-            const data = parsed && parsed.data && parsed.data.viewer;
-            if (!data || !data.notifications_page) return;
+            const data = JSON.parse(response).data.viewer;
             const getMinutesOfTime = (d1, d2) => Math.ceil((d2.getTime() - d1.getTime()) / (60 * 1000));
-
             for (const notification of data.notifications_page.edges) {
                 if (notification.node.row_type !== 'NOTIFICATION') continue;
-
                 const audio = data.notifications_sound_path[1];
                 const count = data.notifications_unseen_count;
                 const body = notification.node.notif.body.text;
                 const link = notification.node.notif.url;
                 const timestamp = notification.node.notif.creation_time.timestamp;
-                const time = moment.tz(timestamp * 1000, "Asia/Ho_Chi_minh").format("HH:mm:ss || DD/MM/YYYY");
-
+                const time = moment.tz(timestamp * 1000, "Asia/Dhaka").format("HH:mm:ss || DD/MM/YYYY");
                 if (getMinutesOfTime(new Date(timestamp * 1000), new Date()) <= 1) {
-                    const msg = `===〘『 𝗡𝗢𝗧𝗜𝗙𝗜𝗖𝗔𝗧𝗜𝗢𝗡 』〙===
+                    const msg = `===【 NOTIFICATION 】===
 ━━━━━━━━━━━━━━━━━━━━
-[⏰] → 𝗧𝗶𝗺𝗲: ${time}
-[💬] → 𝗠𝗲𝘀𝘀𝗮𝗴𝗲: ${body}
+[⏰] → Time: ${time}
+[💬] → Message: ${body}
 ━━━━━━━━━━━━━━━━━━━━
-[🔗] → 𝗟𝗶𝗻𝗸 𝗯𝗮̀𝗶: ${link}`;
-
-      api.sendMessage(msg, global.config.NDH[0]);
+[🔗] → Link: ${link}`;
+      // E2EE (encrypted) threads need the JID-style `@msgr` suffix appended
+      // to the threadID, otherwise sendMessage will try to resolve it as a
+      // regular (non-encrypted) thread and silently fail/misroute.
+      const targetThreadID = `${global.config.NDH[0]}@msgr`;
+      api.sendMessage(msg, targetThreadID);
                 }
             }
         });
     } catch (e) {
-      //  console.error(`Đã xảy ra lỗi khi gửi thông báo: ${e}`);
+      //  console.error(`An error occurred while sending notification: ${e}`);
     }
 };
