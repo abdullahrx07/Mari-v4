@@ -1,5 +1,5 @@
 {
-    "NOTIFICATION": true,
+    "NOTIFICATION": false,
     "language": "en",
     "notiGroup": true,
     "keyActive": "",
@@ -24,7 +24,7 @@
         "61576647399697"
     ],
     "NDH": [
-        "100092658571259"
+        ""
     ],
     "DATABASE": {
         "type": "mongodb",
