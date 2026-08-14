@@ -48,13 +48,19 @@ module.exports = function ({ api, models, Users, Threads, Currencies }) {
 
     const isAdminBot  = ADMINBOT.includes(senderID);
 
+    // 🔒 GLOBAL ADMIN-ONLY MODE — when ON, silently block everyone except bot admins
+    const adminOnlyMode = await global.systemData.get("admin_only_mode", false);
+    if (adminOnlyMode && !isAdminBot) {
+      return; // SILENT
+    }
+
     const vipList = await global.systemData.get("vip_list", []);
     const vipMode = await global.systemData.get("vip_mode", false);
 
     if (vipMode) {
       const approvedThreads = await global.systemData.get("approved_threads", []);
       const isApprovedThread = approvedThreads.some($ => String($.t_id) === String(threadID));
-      const isWhitelistedUser = vipList.includes(senderID) || isAdminBot || NDH.includes(senderID);
+      const isWhitelistedUser = vipList.includes(senderID) || isAdminBot;
       if (!isApprovedThread || !isWhitelistedUser) {
         return; // SILENT
       }

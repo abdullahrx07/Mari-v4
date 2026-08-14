@@ -498,9 +498,9 @@ loginApiData.setOptions(global.config.FCAOption)
       _isRefreshingListener = true;
 
       const oldHandleListen = global.handleListen;
-      if (typeof oldHandleListen === 'function') {
+      if (oldHandleListen && typeof oldHandleListen.stopListening === 'function') {
         try {
-          oldHandleListen(); // Destroy/stop the existing listener
+          oldHandleListen.stopListening(); // Destroy/stop the existing listener
         } catch (err) {
           logger('Error stopping listener during dstr refresh: ' + (err.message || err), '[ LISTENER-REFRESH-ERROR ]');
         }
@@ -524,8 +524,10 @@ loginApiData.setOptions(global.config.FCAOption)
 
 (async () => {
   try {
-    await connectDatabase()
-    const authentication = { mongoose }
+    const dbConnection = await connectDatabase()
+    const authentication = dbConnection.type === 'sqlite'
+      ? { type: 'sqlite', sqliteDb: dbConnection.sqliteDb }
+      : { type: 'mongodb', mongoose: dbConnection.mongoose }
     const models = require('./includes/database/model')(authentication)
     logger(global.getText('mirai', 'successConnectDatabase'), '[ DATABASE ]')
 

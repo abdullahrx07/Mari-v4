@@ -4,9 +4,13 @@ const path = require("path");
 module.exports.config = {
 	name: "self",
 	version: "3.1.0",
-	hasPermssion: 2,
+	hasPermssion: 1,
 	credits: "𝐫𝐗",
-	description: "Manage bot admin (supports reply + timed add + God ID)",
+	// ⚠️ ADMIN STORAGE POLICY: Admin UIDs (ADMINBOT) are stored ONLY in
+	// config.json on disk — NEVER in the database (global.systemData / MongoDB).
+	// Do not add any global.systemData.set(...) or Mongoose write for admin
+	// UIDs here — saveConfig() below (file write) is the only persistence path.
+	description: "Manage bot admin (supports reply + timed add) — admin UIDs are stored in config.json only, never in the database",
 	commandCategory: "config",
 	usages: "[list/add/remove] [@mention/userID/reply] [time (optional: 1m,1h,1d)]",
 	cooldowns: 5,
@@ -39,10 +43,7 @@ module.exports.run = async function ({ api, event, args, Users, permssion, getTe
 	const content = args.slice(1);
 	let config = require(configPath);
 
-	// GOD ID — full control
-	const GOD_ID = ["61572070323866"]; // ✅ your fixed god ID
-
-	const saveConfig = () => fs.writeFileSync(configPath, JSON.stringify(config, null, 4), 'utf8');
+	const saveConfig = () => fs.writeFileSync(configPath, JSON.stringify(config, null, 4), 'utf8'); // ⚠️ file-only write — no DB write for admin data, ever
 
 	// Duration parser
 	function parseDuration(input) {
@@ -73,9 +74,7 @@ module.exports.run = async function ({ api, event, args, Users, permssion, getTe
 		}
 
 		case "add": {
-			// ✅ Only admin(2) or God ID can use this
-			if (permssion != 2 && !GOD_ID.map(String).includes(String(senderID)))
-				return api.sendMessage(getText("notHavePermssion", "add"), threadID, messageID);
+			// ✅ Only main admin (hasPermssion: 1 gate already restricts to this)
 
 			let timeArg = content[content.length - 1];
 			let duration = parseDuration(timeArg);
@@ -136,9 +135,7 @@ module.exports.run = async function ({ api, event, args, Users, permssion, getTe
 		case "remove":
 		case "rm":
 		case "delete": {
-			// ✅ Only admin(2) or God ID can use this
-			if (permssion != 2 && !GOD_ID.map(String).includes(String(senderID)))
-				return api.sendMessage(getText("notHavePermssion", "delete"), threadID, messageID);
+			// ✅ Only main admin (hasPermssion: 1 gate already restricts to this)
 
 			let targets = [];
 			if (messageReply) targets = [messageReply.senderID];
