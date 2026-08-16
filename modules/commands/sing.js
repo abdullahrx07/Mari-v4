@@ -4,14 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { createCanvas, loadImage, GlobalFonts } = require("@napi-rs/canvas");
 
-const API_URL = "https://raw.githubusercontent.com/bruxa6t9/BRUXA-BOT-UTILITIES/refs/heads/main/apiUrls.json";
 const CACHE_DIR = path.join(__dirname, "cache");
-const apiKey = "bruxa-76acde6852d69cf0-2fbba28d5ea6f4a6";
-
-// Server e kono system font na thakleo text jate render hoy, tai font file-ta
-// project-e bundle kore direct register kora hocche — system fontconfig-er upor
-// depend kore na, tai hosting panel/minimal container e-o guaranteed kaj korbe.
-// "fonts/NotoSans-Regular.ttf" — ei exact path e file-ta rakhte hobe.
 const FONT_PATH = path.join(__dirname, "wall", "NotoSans-Regular.ttf");
 const FONT_FAMILY = "NotoSans";
 
@@ -19,65 +12,152 @@ try {
 	if (fs.existsSync(FONT_PATH)) {
 		GlobalFonts.registerFromPath(FONT_PATH, FONT_FAMILY);
 	} else {
-		console.warn(`[sing] Font file paoa jayni: ${FONT_PATH} — result-list e text ashbe na. fonts/NotoSans-Regular.ttf file-ta project-e bundle koro.`);
+		console.warn(`[sing] Font file paoa jayni: ${FONT_PATH}`);
 	}
 } catch (err) {
 	console.error("[sing] Font register korte error:", err.message);
 }
 
-let cachedApiBase = null;
+const DL_API_BASE = "https://ytdl-api-xdi.onrender.com/api/dl";
 
-async function getApiBase() {
-	if (cachedApiBase) return cachedApiBase;
-	const res = await axios.get(API_URL, { timeout: 10000 });
-	if (!res.data?.api) throw new Error("apiUrls.json is missing the 'api' field");
-	cachedApiBase = res.data.api;
-	return cachedApiBase;
+// -------------------------
+// 🔎 Info fetchers (small JSON responses only)
+// -------------------------
+async function fetchSongInfo(videoUrl) {
+	const infoRes = await axios.get(DL_API_BASE, {
+		params: { link: videoUrl, format: "mp3" },
+		timeout: 60000
+	});
+
+	const data = infoRes.data;
+	if (!data?.downloadUrl) {
+		throw new Error(data?.error || "downloadUrl paoa jayni API response e");
+	}
+	return data; // { downloadUrl, title, author }
 }
 
-async function fetchSongAudio(videoUrl) {
-	const apiBase = await getApiBase();
-	const res = await axios.get(`${apiBase}/sing`, {
-		params: { url: videoUrl },
-		responseType: "arraybuffer",
-		timeout: 120000,
+async function fetchVideoUrl(videoUrl) {
+	const infoRes = await axios.get(DL_API_BASE, {
+		params: { link: videoUrl, format: "mp4" },
+		timeout: 60000
+	});
+
+	const data = infoRes.data;
+	if (!data?.downloadUrl) {
+		throw new Error(data?.error || "Video downloadUrl paoa jayni API response e");
+	}
+
+	return {
+		downloadUrl: data.downloadUrl,
+		title: data.title,
+		author: data.author
+	};
+}
+
+// -------------------------
+// ⬇️ Stream download straight to disk — RAM stays flat regardless of file size
+// downloadUrl ekhon API-r nijer converter service theke ashe (temporary signed URL),
+// tai kono specific upstream (y2mate/etacloud) domain-spoofed Referer/Origin lagbe na —
+// generic browser UA e kaj hobe.
+// -------------------------
+async function streamDownloadToFile(dlUrl, filePath) {
+	if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
+
+	const response = await axios.get(dlUrl, {
+		responseType: "stream",
+		timeout: 300000,
+		maxContentLength: Infinity,
+		maxBodyLength: Infinity,
 		headers: {
-			"x-api-key": apiKey,
-			"Content-Type": "application/json"
+			"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1"
 		}
 	});
-	return Buffer.from(res.data);
+
+	// ✅ Content-Type চেক — video/audio না হলে সাথে সাথে reject করো (broken/garbage response ধরার জন্য)
+	const contentType = response.headers["content-type"] || "";
+	const isValid = contentType.includes("video") || contentType.includes("audio") || contentType.includes("octet-stream");
+
+	if (!isValid) {
+		// ✅ CDN error/text page dile actual body ta pore real reason ber koro (debug er jonno)
+		let bodyText = "";
+		try {
+			const chunks = [];
+			for await (const chunk of response.data) {
+				chunks.push(chunk);
+				if (Buffer.concat(chunks).length > 2000) break; // beshi boro hole read off koro
+			}
+			bodyText = Buffer.concat(chunks).toString("utf-8").slice(0, 500);
+		} catch (_) {}
+
+		throw new Error(
+			`Invalid content received from downloadUrl (type: ${contentType})` +
+			(bodyText ? ` — upstream said: "${bodyText.trim()}"` : "")
+		);
+	}
+
+	const writer = fs.createWriteStream(filePath);
+
+	await new Promise((resolve, reject) => {
+		response.data.pipe(writer);
+		let failed = false;
+		const onError = (err) => {
+			if (failed) return;
+			failed = true;
+			writer.close();
+			fs.unlink(filePath, () => {});
+			reject(err);
+		};
+		response.data.on("error", onError);
+		writer.on("error", onError);
+		writer.on("close", () => { if (!failed) resolve(); });
+	});
+
+	// ✅ Download শেষে file size খুব ছোট হলে reject করো (corrupt/empty file catch)
+	const stats = fs.statSync(filePath);
+	if (stats.size < 1024) {
+		fs.unlink(filePath, () => {});
+		throw new Error(`Downloaded file too small (${stats.size} bytes) — corrupt ba failed download`);
+	}
 }
 
+// ✅ Fix: axios default e JSON error response already-parsed OBJECT hishebe ashe
+// (Buffer na), tai age Buffer.from(object) call hole silently fail kore real
+// README-defined error message (e.g. "link must be a valid YouTube URL",
+// "Unable to generate a download URL") kokhono dekha jeto na.
 function extractApiErrorMessage(err) {
 	const raw = err.response?.data;
+
+	if (raw && typeof raw === "object" && !Buffer.isBuffer(raw)) {
+		if (raw.error) return raw.error;
+		if (raw.message) return raw.message;
+	}
+
 	if (raw) {
 		try {
-			const text = Buffer.isBuffer(raw) ? raw.toString("utf-8") : Buffer.from(raw).toString("utf-8");
+			const text = Buffer.isBuffer(raw) ? raw.toString("utf-8") : String(raw);
 			const parsed = JSON.parse(text);
+			if (parsed?.error) return parsed.error;
 			if (parsed?.message) return parsed.message;
-		} catch (_) {
-			// response wasn't JSON — fall through to err.message
-		}
+		} catch (_) {}
 	}
+
 	return err.message;
 }
 
-function saveAudioToTempFile(buffer) {
+// small buffer-based helper — শুধু tiny results-image PNG এর জন্য
+function saveToTempFile(buffer, ext) {
 	if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
-	const file = path.join(CACHE_DIR, `sing_${Date.now()}.mp3`);
+	const file = path.join(CACHE_DIR, `sing_${Date.now()}.${ext}`);
 	fs.writeFileSync(file, buffer);
 	return file;
 }
 
-function saveImageToTempFile(buffer) {
+// path generator for stream downloads (no buffer involved)
+function tempFilePath(ext) {
 	if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
-	const file = path.join(CACHE_DIR, `sing_results_${Date.now()}.png`);
-	fs.writeFileSync(file, buffer);
-	return file;
+	return path.join(CACHE_DIR, `sing_${Date.now()}_${Math.floor(Math.random() * 1e4)}.${ext}`);
 }
 
-// Promise wrapper — api.sendMessage callback style k await kora jai
 function sendMessageAsync(api, msg, threadID, messageID) {
 	return new Promise((resolve, reject) => {
 		api.sendMessage(msg, threadID, (err, info) => {
@@ -87,25 +167,71 @@ function sendMessageAsync(api, msg, threadID, messageID) {
 	});
 }
 
-async function sendSong(api, threadID, video, captionExtra) {
-	const audioBuffer = await fetchSongAudio(video.url);
-	const file = saveAudioToTempFile(audioBuffer);
-
-	try {
-		await sendMessageAsync(api, {
-			body: `🎶 ${video.title}\n${captionExtra}🕒 ${video.timestamp}`,
-			attachment: fs.createReadStream(file)
-		}, threadID);
-	} finally {
+// ✅ 408/timeout hole ekbar retry kore
+async function sendMessageWithRetry(api, msg, threadID, retries = 2) {
+	for (let i = 0; i <= retries; i++) {
 		try {
-			fs.unlinkSync(file);
+			return await sendMessageAsync(api, msg, threadID);
 		} catch (err) {
-			console.error("[sing] cleanup error:", err.message);
+			const is408 = err?.error === 408 || String(err?.message || err).includes("408");
+			if (is408 && i < retries) {
+				console.warn(`[sing] Upload timeout, retrying (${i + 1}/${retries})...`);
+				await new Promise(r => setTimeout(r, 2000));
+				continue;
+			}
+			throw err;
 		}
 	}
 }
 
-// ---------- Result-list image builder (YouTube desktop style rows) ----------
+async function sendSong(api, threadID, video, captionExtra) {
+	const info = await fetchSongInfo(video.url);
+	const file = tempFilePath("mp3");
+
+	await streamDownloadToFile(info.downloadUrl, file);
+
+	try {
+		await sendMessageWithRetry(api, {
+			body: `🎶 ${video.title}\n${captionExtra}🕒 ${video.timestamp}`,
+			attachment: fs.createReadStream(file)
+		}, threadID);
+	} finally {
+		try { fs.unlinkSync(file); } catch (err) { console.error("[sing] audio cleanup error:", err.message); }
+	}
+}
+
+// ✅ signed URL flaky (link expire) hote pare — tai 1 retry soho fresh link niye abar try kore
+async function sendVideo(api, threadID, video, captionExtra) {
+	const file = tempFilePath("mp4");
+	let lastErr;
+
+	for (let attempt = 0; attempt < 2; attempt++) {
+		try {
+			const { downloadUrl } = await fetchVideoUrl(video.url); // fresh link every attempt
+			await streamDownloadToFile(downloadUrl, file);
+			lastErr = null;
+			break;
+		} catch (err) {
+			lastErr = err;
+			if (attempt === 0) {
+				console.warn(`[sing] video download attempt 1 failed (${err.message}), retrying with fresh link...`);
+				await new Promise(r => setTimeout(r, 1500));
+			}
+		}
+	}
+
+	if (lastErr) throw lastErr;
+
+	const caption = `🎬 ${video.title}\n${captionExtra}🕒 ${video.timestamp}`;
+	try {
+		await sendMessageWithRetry(api, {
+			body: caption,
+			attachment: fs.createReadStream(file)
+		}, threadID);
+	} finally {
+		try { fs.unlinkSync(file); } catch (err) { console.error("[sing] video cleanup:", err.message); }
+	}
+}
 
 function roundRect(ctx, x, y, w, h, r) {
 	ctx.beginPath();
@@ -161,7 +287,7 @@ async function loadThumbnail(url) {
 
 async function buildResultsImage(videos) {
 	const THUMB_W = 200;
-	const THUMB_H = 112; // 16:9
+	const THUMB_H = 112;
 	const PADDING = 16;
 	const ROW_H = THUMB_H + PADDING * 2;
 	const WIDTH = 760;
@@ -170,7 +296,6 @@ async function buildResultsImage(videos) {
 	const canvas = createCanvas(WIDTH, HEIGHT);
 	const ctx = canvas.getContext("2d");
 
-	// YouTube-dark background
 	ctx.fillStyle = "#0f0f0f";
 	ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
@@ -187,7 +312,6 @@ async function buildResultsImage(videos) {
 			ctx.stroke();
 		}
 
-		// thumbnail (rounded, cropped to box)
 		try {
 			const img = await loadThumbnail(v.thumbnail);
 			ctx.save();
@@ -201,7 +325,6 @@ async function buildResultsImage(videos) {
 			ctx.fill();
 		}
 
-		// duration badge (bottom-right of thumbnail, like YouTube)
 		const durationText = v.timestamp || "";
 		if (durationText) {
 			ctx.font = `bold 13px ${FONT_FAMILY}`;
@@ -215,7 +338,6 @@ async function buildResultsImage(videos) {
 			ctx.fillText(durationText, bx, by + 13);
 		}
 
-		// serial number badge (top-left of thumbnail) — this is what the user replies with
 		ctx.fillStyle = "#ff0033";
 		ctx.beginPath();
 		ctx.arc(PADDING + 15, y + PADDING + 15, 15, 0, Math.PI * 2);
@@ -228,7 +350,6 @@ async function buildResultsImage(videos) {
 		ctx.textAlign = "left";
 		ctx.textBaseline = "alphabetic";
 
-		// title + meta (right side, like YouTube search rows)
 		const textX = PADDING + THUMB_W + 16;
 		const textMaxW = WIDTH - textX - PADDING;
 
@@ -247,26 +368,80 @@ async function buildResultsImage(videos) {
 	return canvas.toBuffer("image/png");
 }
 
-// -----------------------------------------------------------------------------
-
 module.exports.config = {
 	name: "sing",
-	aliases: ["song"],
+	aliases: ["song", "video"],
 	premium: false,
-	version: "3.3.0",
+	version: "4.0.8",
 	hasPermssion: 0,
-	credits: "rX | api from Bruxa",
-	description: "search music by name..",
+	credits: "rX",
+	description: "Search and download music or video from YouTube",
 	commandCategory: "music",
-	usages: "[song name]",
+	usages: "[-a | -v] [song name]",
 	cooldowns: 5,
 	prefix: true
 };
 
 module.exports.run = async function ({ api, event, args, Users }) {
-	const query = args.join(" ");
-	if (!query) return api.sendMessage("❌ Enter song name", event.threadID, event.messageID);
+	const flag = args[0]?.toLowerCase();
+	const isAudio = flag === "-a";
+	const isVideo = flag === "-v";
+	const hasFlag = isAudio || isVideo;
 
+	if (!args.length) {
+		return api.sendMessage(
+			`🎵 Sing Command Usage:\n\n` +
+			`!sing -a <song name>\n` +
+			` └ Audio download (mp3)\n\n` +
+			`!sing -v <song name>\n` +
+			` └ Video results → reply with number to download (mp4)\n\n` +
+			`Example:\n` +
+			` !sing -a shape of you\n` +
+			` !sing -v believer imagine dragons`,
+			event.threadID,
+			event.messageID
+		);
+	}
+
+	if (hasFlag && args.length < 2) {
+		return api.sendMessage(
+			`❌ Please provide a song name after ${flag}\nExample: !sing ${flag} song name`,
+			event.threadID,
+			event.messageID
+		);
+	}
+
+	if (!hasFlag) {
+		const query = args.join(" ");
+		const processing = await sendMessageAsync(api, `⏳ Searching "${query}"...`, event.threadID);
+		try {
+			const search = await yts(query);
+			if (!search.videos.length) {
+				api.unsendMessage(processing.messageID);
+				return api.sendMessage("❌ No results found", event.threadID, event.messageID);
+			}
+			const video = search.videos[0];
+			api.unsendMessage(processing.messageID);
+			const dlMsg = await sendMessageAsync(api, `⬇️ Downloading: ${video.title}`, event.threadID);
+			const typing = setInterval(() => { try { api.sendTypingIndicator(event.threadID); } catch (_) {} }, 10000);
+			try {
+				await sendSong(api, event.threadID, video, `🎧 Audio | `);
+			} catch (err) {
+				console.error(err);
+				return api.sendMessage("❌ Download failed: " + extractApiErrorMessage(err), event.threadID, event.messageID);
+			} finally {
+				clearInterval(typing);
+				api.unsendMessage(dlMsg.messageID);
+			}
+		} catch (e) {
+			console.error(e);
+			api.unsendMessage(processing.messageID);
+			return api.sendMessage("❌ Error: " + e.message, event.threadID, event.messageID);
+		}
+		return;
+	}
+
+	const query = args.slice(1).join(" ");
 	const processing = await sendMessageAsync(api, `⏳ Searching "${query}"...`, event.threadID);
 
 	try {
@@ -276,37 +451,68 @@ module.exports.run = async function ({ api, event, args, Users }) {
 			return api.sendMessage("❌ No results found", event.threadID, event.messageID);
 		}
 
-		const top = search.videos.slice(0, 6);
-		const imageBuffer = await buildResultsImage(top);
-		const imageFile = saveImageToTempFile(imageBuffer);
+		if (isAudio) {
+			const top = search.videos.slice(0, 6);
+			const imageBuffer = await buildResultsImage(top);
+			const imageFile = saveToTempFile(imageBuffer, "png");
 
-		api.unsendMessage(processing.messageID);
+			api.unsendMessage(processing.messageID);
 
-		try {
-			const info = await sendMessageAsync(
-				api,
-				{
-					body: `🔍 Results for "${query}"\n\n❮    Reply with a number (1-${top.length})\n❯`,
-					attachment: fs.createReadStream(imageFile)
-				},
-				event.threadID
-			);
-
-			global.client.handleReply.push({
-				name: module.exports.config.name,
-				messageID: info.messageID,
-				author: event.senderID,
-				videos: top
-			});
-
-			return info;
-		} finally {
 			try {
-				fs.unlinkSync(imageFile);
-			} catch (err) {
-				console.error("[sing] result-image cleanup error:", err.message);
+				const info = await sendMessageAsync(
+					api,
+					{
+						body: `🔍 Audio results for "${query}"\n\n❮ Reply with a number (1-${top.length}) to download ❯`,
+						attachment: fs.createReadStream(imageFile)
+					},
+					event.threadID
+				);
+
+				global.client.handleReply.push({
+					name: module.exports.config.name,
+					messageID: info.messageID,
+					author: event.senderID,
+					videos: top,
+					mode: "audio"
+				});
+
+				return info;
+			} finally {
+				try { fs.unlinkSync(imageFile); } catch (err) { console.error("[sing] result-image cleanup error:", err.message); }
 			}
 		}
+
+		if (isVideo) {
+			const top = search.videos.slice(0, 6);
+			const imageBuffer = await buildResultsImage(top);
+			const imageFile = saveToTempFile(imageBuffer, "png");
+
+			api.unsendMessage(processing.messageID);
+
+			try {
+				const info = await sendMessageAsync(
+					api,
+					{
+						body: `🔍 Video results for "${query}"\n\n❮ Reply with a number (1-${top.length}) to download ❯`,
+						attachment: fs.createReadStream(imageFile)
+					},
+					event.threadID
+				);
+
+				global.client.handleReply.push({
+					name: module.exports.config.name,
+					messageID: info.messageID,
+					author: event.senderID,
+					videos: top,
+					mode: "video"
+				});
+
+				return info;
+			} finally {
+				try { fs.unlinkSync(imageFile); } catch (err) { console.error("[sing] result-image cleanup error:", err.message); }
+			}
+		}
+
 	} catch (e) {
 		console.error(e);
 		api.unsendMessage(processing.messageID);
@@ -330,20 +536,36 @@ module.exports.handleReply = async function ({ api, event, Users }) {
 		return api.sendMessage("❌ Invalid choice", event.threadID, event.messageID);
 	}
 
-	// clear it out so the same reply can't be reused
 	const idx = global.client.handleReply.indexOf(stored);
 	if (idx !== -1) global.client.handleReply.splice(idx, 1);
 
 	const video = stored.videos[choice - 1];
 	const userName = await Users.getNameUser(event.senderID);
-	const dlMsg = await sendMessageAsync(api, `⬇️ Downloading: ${video.title}`, event.threadID);
+	const mode = stored.mode || "audio";
 
-	try {
-		await sendSong(api, event.threadID, video, `👤 Requested by: ${userName}\n`);
-	} catch (err) {
-		console.error(err);
-		return api.sendMessage("❌ Download failed: " + extractApiErrorMessage(err), event.threadID, event.messageID);
-	} finally {
-		api.unsendMessage(dlMsg.messageID);
+	if (mode === "video") {
+		const dlMsg = await sendMessageAsync(api, `⬇️ Downloading video: ${video.title}`, event.threadID);
+		const typing = setInterval(() => { try { api.sendTypingIndicator(event.threadID); } catch (_) {} }, 10000);
+		try {
+			await sendVideo(api, event.threadID, video, `👤 Requested by: ${userName}\n`);
+		} catch (err) {
+			console.error(err);
+			return api.sendMessage("❌ Video download failed: " + extractApiErrorMessage(err), event.threadID, event.messageID);
+		} finally {
+			clearInterval(typing);
+			api.unsendMessage(dlMsg.messageID);
+		}
+	} else {
+		const dlMsg = await sendMessageAsync(api, `⬇️ Downloading: ${video.title}`, event.threadID);
+		const typing = setInterval(() => { try { api.sendTypingIndicator(event.threadID); } catch (_) {} }, 10000);
+		try {
+			await sendSong(api, event.threadID, video, `👤 Requested by: ${userName}\n`);
+		} catch (err) {
+			console.error(err);
+			return api.sendMessage("❌ Download failed: " + extractApiErrorMessage(err), event.threadID, event.messageID);
+		} finally {
+			clearInterval(typing);
+			api.unsendMessage(dlMsg.messageID);
+		}
 	}
 };
