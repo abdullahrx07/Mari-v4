@@ -185,15 +185,20 @@ module.exports = function ({ api, models }) {
   // running two live sockets at once — if that ever happens, the same event
   // arrives twice and would otherwise be processed (and replied to) twice.
   const _seenEventKeys = new Map(); // key -> timestamp
-  const _DEDUPE_WINDOW_MS = 15000;
+  // Reconnect-এ Facebook sync queue replay করে — একই event ১৫ সেকেন্ডের বেশি
+  // পরেও আবার আসতে পারে (fetched seqID edge-এ থাকলে পুরনো delta-ও আসে)।
+  // তাই window বাড়িয়ে ৩ মিনিট করা হলো; messageID key-তে collision risk নেই।
+  const _DEDUPE_WINDOW_MS = 3 * 60 * 1000;
   const _pruneSeenEventKeys = (now) => {
     for (const [key, ts] of _seenEventKeys) {
       if (now - ts > _DEDUPE_WINDOW_MS) _seenEventKeys.delete(key);
     }
   };
   const _isDuplicateEvent = (event, now) => {
+    // message_reply / message একই মেসেজের দুই রূপ (reply হলে আলাদা delta) —
+    // key থেকে type বাদ দিই, শুধু messageID যথেষ্ট।
     const key = event.messageID
-      ? `${event.type}:${event.messageID}`
+      ? `msg:${event.messageID}`
       : `${event.type}:${event.threadID}:${event.senderID}:${event.timestamp}:${(event.body || '').slice(0, 50)}`;
     _pruneSeenEventKeys(now);
     if (_seenEventKeys.has(key)) return true;
