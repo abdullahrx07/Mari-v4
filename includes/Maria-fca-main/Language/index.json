@@ -1,0 +1,80 @@
+[
+    {
+        "Language": "en",
+        "Folder": {
+            "Index": {
+                "ErrAppState": "Appstate - Your Cookie Is Wrong, Please Replace It, Or Go To Incognito Browser Then Sign In And Try Again !",
+                "CheckPointLevelI": "CheckPoint Detected - Can't Login, Try Logout Then Login And Retrieve Appstate - Cookie !",
+                "UID": "Login as ID: %1",
+                "Area": "Welcome To Server: %1",
+                "NoAreaData": "Can't Get Area Of Account !",
+                "NoAreaDataBypass": "Can't get account area but fca ignores it 🐑",
+                "OnLogin": "Currently logged ...",
+                "LoginSuccess": "✅ [ LOGIN SUCCESS ] Logged In Successfully As UID: %1",
+                "LoginFail": "❌ [ LOGIN FAILED ] Could Not Login - Reason: %1",
+                "LoginErrorCookie": "❌ [ LOGIN FAILED ] Your Cookiestate Is Not Valid !",
+                "LoginErrorCheckpoint": "❌ [ LOGIN FAILED ] Appstate Is Dead, Please Replace It !",
+                "LoginErrorUnknown": "❌ [ LOGIN FAILED ] Unknown Error Occurred While Logging In !",
+                "FoundDtsg": "[ FCA ] Found fb_dtsg !",
+                "ErrorFindDtsg": "[ FCA ] Error Finding fb_dtsg: %1",
+                "ErrorFreshDtsg": "[ FCA ] Error Getting Fresh fb_dtsg: %1",
+                "MqttEndpointDefault": "[ FCA ] Using Default MQTT Endpoint",
+                "LoggingIn": "[ FCA ] Logging In ...",
+                "LoginApproval": "[ FCA ] You Have Login Approvals Turned On",
+                "ErrorConfigLoad": "[ FCA ] Error Loading config.json: %1",
+                "ErrorConfigRefresh": "[ FCA ] Failed To Refresh FCA Config: %1",
+                "SendMessageFallback": "[ FCA ] sendMessage Failed, Using OldMessage Fallback: %1",
+                "E2EEInitFail": "[ E2EE ] Failed To Initialise E2EE: %1",
+                "MonitorFail": "[ MEMORY MONITOR ] Failed To Start: %1",
+                "BannerTitle": "Facebook Chat API",
+                "BannerTagline": "E2EE + MQTT Bridge for Node.js",
+                "BannerLoginLine": "✅  Login successful",
+                "BannerUidLabel": "uid:",
+                "WishMorning": "🌞 Good Morning rX! Bot Is Up And Running.",
+                "WishAfternoon": "🌤️ Good Afternoon rX! Bot Is Up And Running.",
+                "WishEvening": "🌇 Good Evening rX! Bot Is Up And Running.",
+                "WishNight": "🌙 Good Night rX! Bot Is Up And Running.",
+                "PremiumUnlock": "💎 [ PREMIUM UNLOCKED ] Congratulations! FCA Fully Matched With Your Bot - No Bugs Found (%2 Plugins Connected). Premium Access Granted For UID: %1 🎉"
+            }
+        }
+    },
+    {
+        "Language": "bn",
+        "Folder": {
+            "Index": {
+                "ErrAppState": "Appstate - আপনার কুকি ভুল, দয়া করে পরিবর্তন করুন, অথবা Incognito ব্রাউজারে গিয়ে লগইন করে আবার চেষ্টা করুন !",
+                "CheckPointLevelI": "CheckPoint পাওয়া গেছে - লগইন করা যাচ্ছে না, লগআউট করে আবার লগইন করে Appstate/Cookie নিন !",
+                "UID": "লগইন করা হয়েছে ID: %1",
+                "Area": "সার্ভারে স্বাগতম: %1",
+                "NoAreaData": "একাউন্টের Area পাওয়া যাচ্ছে না !",
+                "NoAreaDataBypass": "একাউন্টের area পাওয়া যায়নি তবে fca এটা ignore করছে 🐑",
+                "OnLogin": "বর্তমানে লগইন হচ্ছে ...",
+                "LoginSuccess": "✅ [ লগইন সফল ] সফলভাবে লগইন হয়েছে UID: %1",
+                "LoginFail": "❌ [ লগইন ব্যর্থ ] লগইন করা যায়নি - কারণ: %1",
+                "LoginErrorCookie": "❌ [ লগইন ব্যর্থ ] আপনার Cookiestate সঠিক নয় !",
+                "LoginErrorCheckpoint": "❌ [ লগইন ব্যর্থ ] Appstate ডেড, দয়া করে পরিবর্তন করুন !",
+                "LoginErrorUnknown": "❌ [ লগইন ব্যর্থ ] লগইন করার সময় অজানা সমস্যা হয়েছে !",
+                "FoundDtsg": "[ FCA ] fb_dtsg পাওয়া গেছে !",
+                "ErrorFindDtsg": "[ FCA ] fb_dtsg খুঁজতে সমস্যা: %1",
+                "ErrorFreshDtsg": "[ FCA ] নতুন fb_dtsg আনতে সমস্যা: %1",
+                "MqttEndpointDefault": "[ FCA ] Default MQTT Endpoint ব্যবহার করা হচ্ছে",
+                "LoggingIn": "[ FCA ] লগইন করা হচ্ছে ...",
+                "LoginApproval": "[ FCA ] আপনার Login Approvals চালু আছে",
+                "ErrorConfigLoad": "[ FCA ] config.json লোড করতে সমস্যা: %1",
+                "ErrorConfigRefresh": "[ FCA ] FCA Config রিফ্রেশ করতে ব্যর্থ: %1",
+                "SendMessageFallback": "[ FCA ] sendMessage ব্যর্থ, OldMessage Fallback ব্যবহার হচ্ছে: %1",
+                "E2EEInitFail": "[ E2EE ] E2EE চালু করতে ব্যর্থ: %1",
+                "MonitorFail": "[ MEMORY MONITOR ] চালু করতে ব্যর্থ: %1",
+                "BannerTitle": "Facebook Chat API",
+                "BannerTagline": "E2EE + MQTT Bridge for Node.js",
+                "BannerLoginLine": "✅  লগইন সফল হয়েছে",
+                "BannerUidLabel": "uid:",
+                "WishMorning": "🌞 শুভ সকাল rX! Bot চালু হয়ে গেছে।",
+                "WishAfternoon": "🌤️ শুভ দুপুর rX! Bot চালু হয়ে গেছে।",
+                "WishEvening": "🌇 শুভ সন্ধ্যা rX! Bot চালু হয়ে গেছে।",
+                "WishNight": "🌙 শুভ রাত্রি rX! Bot চালু হয়ে গেছে।",
+                "PremiumUnlock": "💎 [ প্রিমিয়াম আনলকড ] অভিনন্দন! FCA আপনার বটের সাথে সম্পূর্ণ মিলে গেছে - কোনো বাগ পাওয়া যায়নি (%2 টি প্লাগিন কানেক্ট হয়েছে)। UID: %1 এর জন্য প্রিমিয়াম এক্সেস চালু হয়েছে 🎉"
+            }
+        }
+    }
+]
